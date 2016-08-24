@@ -354,9 +354,25 @@ typedef enum
  *  #define __raw_readb(a)  (__chk_io_ptr(a), *(volatile unsigned char __force  *)(a))
  */
 
+/*=========================== AMP SUPPORT DEFINITIONS =================
+ */
+
+#define NUM_AMPS  3   // Max per probe
+
+#ifdef SIM_DEV_BOARD
+// Address map array
+//   dimension 0 - the address
+//   dimension 1 - the value
+int simdrv_amp_address_map[FPGA_REG_SIZE][2];
+#endif
+
 /*=======================GLOBAL VARIABLES==========================
  * Global Data (static not needed because EXPORT_NO_SYMBOLS is used)
  */
+
+// Devices include probe + AMP
+#define NUM_DEVICES  (NUM_PHONES + NUM_AMPS)
+
 uint32_t        g_FpgaVersion = 0;
 uint32_t        read_timeout_ms = READ_TIMEOUT_MS;
 int32_t         fpga_irq = FPGA_INTERRUPT_NUMBER;
@@ -368,9 +384,9 @@ uint8_t *       fpga_mapped_address;
 struct cdev         simdrv_cdev;
 struct class_simple *sim_class;         //Linux 2.6 class_simple Interface
 
-phoneSIMStruct      phoneSIMData[NUM_PHONES];
-int32_t             g_uartDivisor[NUM_PHONES]; // Current UART Divisor for identifying baud change.
-uint8_t             ATR[NUM_PHONES][ATR_BUFFER_SIZE];
+phoneSIMStruct      phoneSIMData[NUM_DEVICES];
+int32_t             g_uartDivisor[NUM_DEVICES]; // Current UART Divisor for identifying baud change.
+uint8_t             ATR[NUM_DEVICES][ATR_BUFFER_SIZE];
 
 // Precompute register addresses.
 uint8_t *ssw_irq_reg = NULL;
@@ -386,16 +402,6 @@ int  (*simdrv_SendResponse)         (phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
 void (*simdrv_ClearRx)              (phoneSIMStruct *p_Dev);
 int  (*simdrv_CalculateDivisor)     (int p_nBaudRate);
 int  (*simdrv_DivisorToBaudrate)    (int p_nDivisor);
-
-/*=========================== AMP SUPPORTDEFINITIONS ==================
- */
-
-#ifdef SIM_DEV_BOARD
-// Address map array
-//   dimension 0 - the address
-//   dimension 1 - the value
-int simdrv_amp_address_map[FPGA_REG_SIZE][2];
-#endif
 
 /*=========================== FUNCTIONS DEFINITIONS=====================
  */
@@ -1383,7 +1389,7 @@ static int simdrv_open(struct inode * inode, struct file * file)
         return -ENOMEM;
 
     // attach UART structure to the file structure
-    pFile->m_pUartStruct = phoneSIMData + (MINOR(inode->i_rdev) % NUM_PHONES);
+    pFile->m_pUartStruct = phoneSIMData + (MINOR(inode->i_rdev) % NUM_DEVICES);
     pDev = pFile->m_pUartStruct;
 
     if ( file->f_flags & O_EXCL )
@@ -1753,7 +1759,7 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
             case SIMDRV_COPY_EVENTS:
             {
                 int     nPhone = (int)arg;
-                if ( nPhone >= 0 || nPhone < NUM_PHONES)
+                if ( nPhone >= 0 || nPhone < NUM_DEVICES)
                 {
                     pDev->m_EventSrc = nPhone;
                     phoneSIMData[nPhone].m_PhoneForCopyEvents = pDev;
@@ -1883,7 +1889,7 @@ static int simdrv_proc_page(char *buf, char **start, off_t offset,
     int         ph;
 
     len += sprintf(buf+len,"%s\n", DRIVER_VERSION_STRING);
-    for (ph = 0; ph < NUM_PHONES; ++ph)
+    for (ph = 0; ph < NUM_DEVICES; ++ph)
     {
         phoneSIMStruct * dev = phoneSIMData + ph;
         uint8_t     dll = ioread8(dev->m_Uart.dll);
@@ -2791,7 +2797,7 @@ static void simdrv_TimerFunction(unsigned long p_nJifs)
 {
     int     sim;
 
-    for ( sim = 0; sim < NUM_PHONES; sim++ )
+    for ( sim = 0; sim < NUM_DEVICES; sim++ )
     {
         phoneSIMStruct      *dev = &phoneSIMData[sim];
         volatile uint8_t    bySimPresent = fpga_IsSimPresent(&dev->m_Fpga);
@@ -3515,10 +3521,10 @@ static void simdrv_cleanup_module(void)
 #endif
     case RxTasklet:
         //  kill tasklets
-        for (ph = 0; ph < NUM_PHONES; ++ph)
+        for (ph = 0; ph < NUM_DEVICES; ++ph)
             tasklet_kill(&phoneSIMData[ph].m_RxTasklet);
     case FPGA:          // fall through from previous case
-        for (ph = 0; ph < NUM_PHONES; ++ph)
+        for (ph = 0; ph < NUM_DEVICES; ++ph)
         {
             // stop send T=0 NULL byte timer, in case it still sceduled/runnig
             phoneSIMData[ph].m_T0Mode = T0_WAIT_COMMAND;
@@ -3533,7 +3539,7 @@ static void simdrv_cleanup_module(void)
         cdev_del(&simdrv_cdev);
 
     case RegisterMajor:
-        unregister_chrdev_region(MKDEV(simdrv_major, SIMPHONE_MINOR_DEV_NUM),NUM_PHONES);
+        unregister_chrdev_region(MKDEV(simdrv_major, SIMPHONE_MINOR_DEV_NUM),NUM_DEVICES);
         // in case a timer still working
         del_timer_sync(&timer_IrCheck);
 
@@ -3579,7 +3585,7 @@ static inline int simdrv_init(void)
     // Precompute SSW register addresse.
     ssw_irq_reg = fpga_mapped_address + SSW_IRQ;
 
-    for (ph = 0; ph < NUM_PHONES; ++ph)
+    for (ph = 0; ph < NUM_DEVICES; ++ph)
     {
         phoneSIMStruct * PD = phoneSIMData + ph;
 
@@ -3730,7 +3736,7 @@ static int __init simdrv_init_module(void)
     simdrv_InitUartVirtualFunctions();
 
     result = register_chrdev_region(MKDEV(simdrv_major, SIMPHONE_MINOR_DEV_NUM),
-                                          NUM_PHONES, simdrv_dev);
+                                          NUM_DEVICES, simdrv_dev);
     if (result < 0)
     {
         printk(KERN_ALERT "simdrv: can't get major %d;%d\n",simdrv_major, result);
@@ -3744,7 +3750,7 @@ static int __init simdrv_init_module(void)
     //simdrv_cdev = cdev_alloc();
     simdrv_cdev.ops = &simdrv_fops;
     cdev_init(&simdrv_cdev, &simdrv_fops);
-    result = cdev_add(&simdrv_cdev, MKDEV(simdrv_major,SIMPHONE_MINOR_DEV_NUM), NUM_PHONES);
+    result = cdev_add(&simdrv_cdev, MKDEV(simdrv_major,SIMPHONE_MINOR_DEV_NUM), NUM_DEVICES);
     if (result < 0)
     {
         printk(KERN_ALERT "simdrv: can't allocate device structure %d\n", result);
