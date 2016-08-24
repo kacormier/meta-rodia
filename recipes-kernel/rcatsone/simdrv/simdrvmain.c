@@ -2,6 +2,9 @@
  * Copyright (c) 2005 Casabyte, Inc.  All Rights Reserved
  */
 
+// Option for dev board handling
+#define SIM_DEV_BOARD
+
 #ifndef __KERNEL__
 #  define __KERNEL__
 #endif
@@ -27,7 +30,9 @@
 #  error "This kernel is too old: not supported by this file"
 #endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
+#ifndef SIM_DEV_BOARD
 #  error "This kernel is too recent: not supported by this file"
+#endif
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,5,0)
@@ -1606,7 +1611,11 @@ static int simdrv_SendResponseEx(phoneSIMStruct *p_Dev, uint16_t p_Length,
 //
 //
 //
+#ifndef SIM_DEV_BOARD
 static int simdrv_ioctl(struct inode * inode, struct file * file, unsigned int command, unsigned long arg)
+#else
+static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long arg) 
+#endif
 {
     int retval = 0;
 //static int dbg_cnt = 0;
@@ -1960,6 +1969,7 @@ if ( tmp > 50 )
     }
     return retval;
 }
+#ifndef SIM_DEV_BOARD
 static int simdrv_proc_page(char *buf, char **start, off_t offset,
                         int count, int *eof, void *data)
 {
@@ -1987,6 +1997,7 @@ static int simdrv_proc_page(char *buf, char **start, off_t offset,
     }
     return len;
 }
+#endif
 //
 //  function sends phone response to the corresponding UART (FPGA)
 //      p_strBuf - buffer with p_nBufLen bytes to send
@@ -3689,7 +3700,11 @@ static int simdrv_ReadData(phoneSIMStruct *p_Dev, uint8_t *p_Buff, int p_nReadLe
 struct file_operations simdrv_fops =
 {
     owner:      THIS_MODULE,
+#ifndef SIM_DEV_BOARD
     ioctl:      simdrv_ioctl,
+#else
+    unlocked_ioctl:  simdrv_ioctl,
+#endif
     open:       simdrv_open,
     release:    simdrv_release,
     poll:       simdrv_poll,
@@ -3707,7 +3722,9 @@ static void simdrv_cleanup_module(void)
     switch (DriverState)
     {
     case Statistic:
+#ifndef SIM_DEV_BOARD
         remove_proc_entry("sim", NULL /* parent dir */);
+#endif
     case IRQ:
         free_irq(fpga_irq, &simdrv_dev);
     case RxTasklet:
@@ -4014,12 +4031,13 @@ static int __init simdrv_init_module(void)
     } else {
       DriverState = IRQ;
     }
+#ifndef SIM_DEV_BOARD
     create_proc_read_entry( "sim",
                             0 /* default mode */,
                             NULL /* parent dir */,
                             simdrv_proc_page,
                             NULL /* client data */);
-
+#endif
     DriverState = Statistic;
 
     printk("simdrv: Loaded Successfully, irq = %d.\n", fpga_irq);
