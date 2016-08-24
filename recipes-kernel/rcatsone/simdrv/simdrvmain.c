@@ -62,7 +62,6 @@
 #include <asm/system.h>     /* cli(), *_flags */
 #include <asm/io.h>     /* ioremap, iounmap */
 #include <asm/byteorder.h>
-// #include <mach/hardware.h>       /* xScale registers definitions arch/platform.h*/
 #include <linux/cdev.h>
 #include <linux/kdev_t.h>
 #include <linux/workqueue.h>
@@ -132,20 +131,6 @@ enum    {
 
 #define READ_TIMEOUT_MS     (70000) /* default if not set as module parameter */
 
-#if 0
-
-/* From: Steve Bears Tuesday, November 29, 2005 2:28 PM
- * The SSW interrupts are on a second interrupt line from the FPGA.  They reach the
- * X-Scale on GPIO-4, which should be configured as an active high interrupt.
- */
-#define SSW_IRQ_GPIO_NUMBER         (4)
-#define FPGA_SSW_INTERRUPT_LINE     (4)
-//#define IXP425_GPIO_FALLING_EDGE  IRQT_FALLING
-#define GPIT1R_GPIO4_BITS           (0x7000L)
-// #define GPIT1R_GPIO4_RISING_EDGE (0x2000L)
-
-#endif
-
 /* Vasily Kaliniouk found in Section 13.5.1 (pp. 403-404) of IXP4XX_IXC1100_Developer_Man_252480-3.pdf
  * a table that shows the source of Int21 is GPIO[4], so that is the interrupt number that must be
  * used by this driver to process FPGA SSW interrupts
@@ -184,13 +169,7 @@ enum    {
 
 /*=======================CONTROL STRUCTURES DEFINITIONS=================
  */
-/*
-typedef
-struct  DeviceFlags {
-    unsigned    Valid : 1;
-    unsigned    Open : 1;
-}   DeviceFlags;
-*/
+
 typedef struct T0Parser
 {
     int         nExpectedLength;    // command header without a Length field
@@ -399,11 +378,6 @@ uint8_t *ssw_irq_reg = NULL;
 // timer to simulate Insert/Remove interrupts
 struct timer_list   timer_IrCheck;
 
-// UART type dependent ==============================
-//typedef int  virt_SendResponse         (phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
-//                                     int p_nBufLen, uint16_t p_BaudRateDivisor );
-//virt_SendResponse   *simdrv_SendResponse;
-
 uint8_t     g_LsrTxError;       // different UART type have this error bit in different places
 //  function pointers ("virtual functions)
 void (*simdrv_SendAtr)              (phoneSIMStruct * p_Dev);
@@ -425,20 +399,14 @@ int simdrv_amp_address_map[FPGA_REG_SIZE][2];
 
 /*=========================== FUNCTIONS DEFINITIONS=====================
  */
-//static inline int simdrv_send_response(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, int p_nBufLen, uint16_t p_BaudRateDivisor);
-//static int simdrv_ReadRawData(phoneSIMStruct * p_Dev, BufferElement *p_strBuf, int p_nCmdLen);
 static int simdrv_ReadRawDataBlock(phoneSIMStruct * p_Dev, BufferElement *p_strBuf, int p_nLen);
 static int simdrv_ReadPhoneData(phoneSIMStruct * p_Dev, BufferElement *p_strBuf, int p_nCmdLen);
 static int simdrv_ReadData(phoneSIMStruct * p_Dev, uint8_t *p_Buff, int p_nReadLen);
-//static int simthread_thread(void *p_Prm);
 static inline uint8_t simdrv_translateEvent(phoneSIMStruct * p_Dev, BufferElement *p_usValue);
-//static uint16_t simdrv_isr_disable(phoneSIMStruct *PD, mode_t p_OpenMode);
 static int simdrv_UartConfig(phoneSIMStruct *p_Dev, struct SimConfigUart *p_UartConfig);
 static int simdrv_ReadCommand(phoneSIMStruct * p_Dev, uint8_t *p_ResBuf, uint8_t p_byCmdSz);
 static int simdrv_ReadCommandFull(phoneSIMStruct * p_Dev, struct SimCommand *p_Command);
 static int simdrv_ReadMonitor(phoneSIMStruct * p_Dev, struct SimMonitor *p_Command);
-//static inline int simdrv_CalculateDivisor(int p_nBaudRate);
-//static inline void simdrv_SetDefaultBaudrate(phoneSIMStruct *p_Dev);
 static void simdrv_SendNull(unsigned long ptr);
 static uint16_t simdrv_IsEvent(phoneSIMStruct *p_Dev, BufferElement *p_strBuf, int p_nBufCnt);
 static inline int simdrv_Atr( phoneSIMStruct *p_Dev, struct SimCommand *p_Command,
@@ -461,7 +429,6 @@ static inline uint8_t fpga_IsSimReady(struct FpgaRegs *p_Fpga);
 #endif
 static void simdrv_SetUartDivisor(phoneSIMStruct *p_Dev, int32_t p_nDivisor);
 static inline int  simdrv_FillTxFifoIrq(phoneSIMStruct * p_Dev);
-//static inline void simdrv_send_atr(phoneSIMStruct * p_Dev);
 /*==============================FUNCTIONS===============================
  */
 /*==============================DEBUG===================================
@@ -506,19 +473,6 @@ static inline long deltaTime(struct timeval *tv_before, struct timeval *tv_after
 /*==============================HW Functions============================
  */
 //
-// function clears Rx FIFO as well as MSR and SCR registers
-//          it does NOT touch Tx interrupts
-//
-static void simdrv_Uart1ClearRx(phoneSIMStruct *p_Dev)
-{
-   int16_t  cnt = 1200;
-
-   // Clear rx data, line error, msr, and phone status interrupts.
-   while((cnt-- > 0) && (ioread8(p_Dev->m_Uart.lsr) & 0x01)) ioread8(p_Dev->m_Uart.rbr);
-   ioread8(p_Dev->m_Uart.msr);
-   ioread8(p_Dev->m_Fpga.ph_scr);
-}
-//
 //
 static void simdrv_Uart2ClearRx(phoneSIMStruct *p_Dev)
 {
@@ -529,21 +483,9 @@ static void simdrv_Uart2ClearRx(phoneSIMStruct *p_Dev)
 }
 //
 //
-//
-static int simdrv_Uart1CalculateDivisor(int p_nBaudRate)
-{
-    return((UART_FREQ + (p_nBaudRate*8L)) / (p_nBaudRate*16));
-}
-//
-//
 static int simdrv_Uart2CalculateDivisor(int p_nBaudRate)
 {
     return ((UART_FREQ + (p_nBaudRate/2L)) / p_nBaudRate) - 1L;
-}
-
-static int simdrv_Uart1DivisorToBaudrate(int p_nDivisor)
-{
-    return((UART_FREQ + (p_nDivisor*8L)) / (p_nDivisor*16));
 }
 //
 //
@@ -990,24 +932,6 @@ static irqreturn_t simdrv_isr(int32_t irq, void *dev_id)
 }
 #endif
 
-#if 0
-
-    while((fpga_ssw_irq = ioread8(ssw_irq_reg)) != 0)
-    {
-if ( cnt++ < 160 ) printk("%d^simdrv isr^%X\n", cnt, fpga_ssw_irq);
-        if(fpga_ssw_irq & FPGA_SSW_IRQ_PH0)  simdrv_phone_isr(&phoneSIMData[0]);
-        if(fpga_ssw_irq & FPGA_SSW_IRQ_PH1)  simdrv_phone_isr(&phoneSIMData[1]);
-        if(fpga_ssw_irq & FPGA_SSW_IRQ_PH2)  simdrv_phone_isr(&phoneSIMData[2]);
-        if(fpga_ssw_irq & FPGA_SSW_IRQ_UART0) simdrv_uart_isr(&phoneSIMData[0]);
-        if(fpga_ssw_irq & FPGA_SSW_IRQ_UART1) simdrv_uart_isr(&phoneSIMData[1]);
-        if(fpga_ssw_irq & FPGA_SSW_IRQ_UART2) simdrv_uart_isr(&phoneSIMData[2]);
-    }
-
-    // see include/asm-arm/arch-ixp4xx/platform.h
-    //gpio_line_isr_clear(FPGA_SSW_INTERRUPT_LINE);
-    return IRQ_HANDLED;
-#endif
-
 /*
  *  starts/restarts send T=0 NULL byte timer
  */
@@ -1448,18 +1372,6 @@ static unsigned int simdrv_poll(struct file * file, struct poll_table_struct * p
 //
 //
 //
-/*static
-int simdrv_fasync(int fd, struct file * file, int mode)
-{
-    FileStruct      *pFile = (FileStruct *)file->private_data;
-    phoneSIMStruct  *pDev = pFile->m_pUartStruct;
-
-    return fasync_helper(fd,file,mode,&pDev->NotifyList);
-}
-*/
-//
-//
-//
 static int simdrv_open(struct inode * inode, struct file * file)
 {
     phoneSIMStruct  *pDev;
@@ -1831,24 +1743,6 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
                     retval = simdrv_Config(pDev, &config, (uint8_t *)arg);
             }
             break;
-/*
-        case SIMDRV_SET:
-            {
-                struct uart_config     config;
-                if ( copy_from_user(&config, (uint8_t *)arg, sizeof(struct uart_config)))
-                    retval = -EFAULT;
-                else
-                {
-                    // disable interrupts
-                    uint16_t usIers = simdrv_isr_disable(PD, FMODE_READ | FMODE_WRITE);
-                    // reconfigure UART
-                    retval =  simdrv_UartConfig(PD, &config);
-                    // enable interrupts
-                    simdrv_isr_enable(PD,(uint8_t)((usIers>>8) & 0xFF),
-                                          (uint8_t)(usIers & 0xFF));
-                }
-            }
-            break;  */
         case SIMDRV_ENABLE:
             {
                 retval = 0;
@@ -2010,54 +1904,7 @@ static int simdrv_proc_page(char *buf, char **start, off_t offset,
     return len;
 }
 #endif
-//
-//  function sends phone response to the corresponding UART (FPGA)
-//      p_strBuf - buffer with p_nBufLen bytes to send
-//  function will block untill all data is sent
-//  function is protected by semaphore to avoid racing when ioctl and
-//      receive threads want to transmit "simultaneously"
-//
-static int simdrv_Uart1SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
-                                    int p_nBufLen, uint16_t p_BaudRateDivisor)
-{
-    int         nRetCode = 0;
 
-    //protection against sending when file is already closed
-    if ( p_Dev->m_TxStatus == SIM_IO_STOP )
-        return 0;
-
-    // wait untill buffer is in use
-    if (down_interruptible (&p_Dev->m_TxBuffer.m_TxSemaphore))
-        return -ERESTARTSYS;
-
-#ifdef SIM_DEBUG_TRACE
-    simdrv_DebugPrint("send1 in", p_Dev->m_PhoneId, p_strBuf, (int)p_nBufLen);
-#endif
-    // do not execute tasklet(bottom half) for a while to prevent racing
-    tasklet_disable(&p_Dev->m_RxTasklet);
-
-    // check if ATR in process. If so flush the requesed data
-    if ( p_Dev->m_TxBuffer.m_DataType == TX_COMMAND )
-    {
-        p_Dev->m_TxBuffer.m_BaudRateDivisor = p_BaudRateDivisor;
-        p_Dev->m_TxBuffer.m_nTxPtr = sizeof(p_Dev->m_TxBuffer.m_Buffer) - p_nBufLen;
-//mdelay(10);
-        // copy to the end of the transmit buffer
-        memcpy(&p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr], p_strBuf, p_nBufLen);
-        // enable Tx interrupt - initiate transmit
-        simdrv_isr_tx_enable(p_Dev);
-    }
-    else
-        printk("******************************!=TX_COMMAND\n");
-
-    // set buffer has data flag
-    //atomic_set(&p_Dev->m_PhoneTxTrigger, 1);
-
-    // allow taskled(IRQ bottom half) to be executed
-    tasklet_enable(&p_Dev->m_RxTasklet);
-
-    return nRetCode;
-}
 //
 // UART specific function for new UART with hardware Tx FIFO
 //  This function is used by IRQ
@@ -2205,36 +2052,6 @@ static int simdrv_Uart2SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
     return 0;
 }
 
-/*
-static inline int simdrv_SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
-                                       int p_nBufLen, uint16_t p_BaudRateDivisor)
-{
-    if ( g_FpgaVersion >= 7 )    // new UART with hardware Tx FIFO
-        return simdrv_Uart2SendResponse(p_Dev, p_strBuf,p_nBufLen, p_BaudRateDivisor);
-    else
-        return simdrv_Uart1SendResponse(p_Dev, p_strBuf,p_nBufLen, p_BaudRateDivisor);
-}
-*/
-//
-//
-//
-static void simdrv_Uart1SendAtr(phoneSIMStruct * p_Dev)
-{
-    //protection against sending when file is already closed
-    if ( p_Dev->m_TxStatus == SIM_IO_STOP )
-        return;
-
-    p_Dev->m_TxBuffer.m_DataType = TX_ATR;
-    p_Dev->m_TxBuffer.m_BaudRateDivisor = 0;
-
-    p_Dev->m_TxBuffer.m_nTxPtr = sizeof(p_Dev->m_TxBuffer.m_Buffer) - p_Dev->ATRsize;
-    // copy ATR to the end of the transmit buffer
-    memcpy(&p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr],
-            p_Dev->ATRptr, (size_t)(p_Dev->ATRsize));
-
-    // enable Tx interrupt - initiate transmit
-    simdrv_isr_tx_enable(p_Dev);
-}
 //
 //
 //
@@ -2278,52 +2095,7 @@ static void simdrv_Uart2SendAtr(phoneSIMStruct * p_Dev)
     memcpy(&p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr],
            &atrBuf[atrSize - leftCnt], leftCnt);
 }
-/*
-//
-//
-//
-static inline void simdrv_send_atr(phoneSIMStruct * p_Dev)
-{
-    //protection against sending when file is already closed
-    if ( p_Dev->m_TxStatus == SIM_IO_STOP )
-        return;
 
-    p_Dev->m_TxBuffer.m_DataType = TX_ATR;
-    p_Dev->m_TxBuffer.m_BaudRateDivisor = 0;
-
-    if ( g_FpgaVersion >= 7 )    // new UART with hardware Tx FIFO
-    {
-        // NOTE tasklet will enable Tx interrupt
-        uint8_t     *atrBuf = p_Dev->ATRptr;
-        int         atrSize = (int)(p_Dev->ATRsize);
-        int leftCnt;
-
-        // first - clear Tx FIFO
-        iowrite8(FCR_FIFO_ENABLE | FCR_TX_FIFO_RST, p_Dev->m_Uart.fcr);
-
-        leftCnt = simdrv_FillTxFifo(p_Dev, atrBuf, atrSize);
-        if ( leftCnt == 0 )
-        {   // FIFO is big enough for all Tx bytes
-            // tell IRQ Tx is done
-            p_Dev->m_TxBuffer.m_nTxPtr = sizeof(p_Dev->m_TxBuffer.m_Buffer);
-            return;       // transmit finished
-        }
-
-        p_Dev->m_TxBuffer.m_nTxPtr = sizeof(p_Dev->m_TxBuffer.m_Buffer) - leftCnt;
-        // copy to the end of the transmit buffer
-        memcpy(&p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr],
-               &atrBuf[atrSize - leftCnt], leftCnt);
-
-    }
-    else
-    {
-        p_Dev->m_TxBuffer.m_nTxPtr = sizeof(p_Dev->m_TxBuffer.m_Buffer) - p_Dev->ATRsize;
-        // copy ATR to the end of the transmit buffer
-        memcpy(&p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr],
-                p_Dev->ATRptr, (size_t)(p_Dev->ATRsize));
-    }
-}
-*/
 /*
  *  schedued task - is runned by timer in case we need to send T=0 NULL byte
  */
@@ -3788,25 +3560,13 @@ static void simdrv_cleanup_module(void)
 //  instead of calling "virtual function".
 //
 static inline void simdrv_InitUartVirtualFunctions(void)
-{
-    if ( g_FpgaVersion < 7 )
-    {                           // old UART
-        g_LsrTxError = 0x10;
-        simdrv_SendAtr           = simdrv_Uart1SendAtr;
-        simdrv_SendResponse      = simdrv_Uart1SendResponse;
-        simdrv_ClearRx           = simdrv_Uart1ClearRx;
-        simdrv_CalculateDivisor  = simdrv_Uart1CalculateDivisor;
-        simdrv_DivisorToBaudrate = simdrv_Uart1DivisorToBaudrate;
-    }
-    else
-    {                           // new UART with Tx FIFO
+{                        // new UART with Tx FIFO
         g_LsrTxError = LSR_TX_ERROR;
         simdrv_SendAtr           = simdrv_Uart2SendAtr;
         simdrv_SendResponse      = simdrv_Uart2SendResponse;
         simdrv_ClearRx           = simdrv_Uart2ClearRx;
         simdrv_CalculateDivisor  = simdrv_Uart2CalculateDivisor;
         simdrv_DivisorToBaudrate = simdrv_Uart2DivisorToBaudrate;
-    }
 }
 //
 //
@@ -3942,24 +3702,6 @@ static int __init simdrv_init_module(void)
     DriverState = None;         /* start initialization */
 
     printk(KERN_ALERT "SIMDRV start\n");
-
-#if 0
-    /* FPGA registers mapping */
-    if (check_mem_region(FPGA_SSW_IRQ, FPGA_REG_SIZE - SSW_IRQ))
-    {
-      printk("simdrv [%lx:%lx] Already In Use\n",FPGA_SSW_IRQ, FPGA_REG_BASE+FPGA_REG_SIZE-1);
-      return -EFAULT;
-    }
-    if (request_mem_region(FPGA_SSW_IRQ, FPGA_REG_SIZE - SSW_IRQ,"simdrv"))
-    {
-      printk("simdrv Registered Region [%lx:%lx]\n",FPGA_SSW_IRQ,FPGA_REG_BASE+FPGA_REG_SIZE-1);
-      DriverState = Mem;
-    } else {
-      printk("simdrv Couldn't Register Region [%lx:%lx]\n",FPGA_SSW_IRQ,FPGA_REG_BASE+FPGA_REG_SIZE-1);
-      result = -EFAULT;
-      goto fail;
-    }
-#endif
 
 #ifndef SIM_DEV_BOARD
     // Perform FPGA mapping
