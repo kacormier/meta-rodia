@@ -413,6 +413,16 @@ void (*simdrv_ClearRx)              (phoneSIMStruct *p_Dev);
 int  (*simdrv_CalculateDivisor)     (int p_nBaudRate);
 int  (*simdrv_DivisorToBaudrate)    (int p_nDivisor);
 
+/*=========================== AMP SUPPORTDEFINITIONS ==================
+ */
+
+#ifdef SIM_DEV_BOARD
+// Address map array
+//   dimension 0 - the address
+//   dimension 1 - the value
+int simdrv_amp_address_map[FPGA_REG_SIZE][2];
+#endif
+
 /*=========================== FUNCTIONS DEFINITIONS=====================
  */
 //static inline int simdrv_send_response(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, int p_nBufLen, uint16_t p_BaudRateDivisor);
@@ -950,6 +960,7 @@ printk("EV%d 0x%X\n", PD->m_PhoneId, rx_word);
 //  1000 0000 0000 0000 =  RST falling edge event.
 //  1000 0001 0000 0000 =  RST rising edge event.
 //
+#ifndef SIM_DEV_BOARD
 static irqreturn_t simdrv_isr(int32_t irq, void *dev_id)
 {
     register uint8_t fpga_ssw_irq;
@@ -977,6 +988,7 @@ static irqreturn_t simdrv_isr(int32_t irq, void *dev_id)
    return IRQ_HANDLED;
 
 }
+#endif
 
 #if 0
 
@@ -3726,7 +3738,9 @@ static void simdrv_cleanup_module(void)
         remove_proc_entry("sim", NULL /* parent dir */);
 #endif
     case IRQ:
+#ifndef SIM_DEV_BOARD
         free_irq(fpga_irq, &simdrv_dev);
+#endif
     case RxTasklet:
         //  kill tasklets
         for (ph = 0; ph < NUM_PHONES; ++ph)
@@ -3752,8 +3766,9 @@ static void simdrv_cleanup_module(void)
         del_timer_sync(&timer_IrCheck);
 
     case IOmap:         // fall through from previous case
-        // iounmap(fpga_mapped_address);
+#ifndef SIM_DEV_BOARD
         ioport_unmap(fpga_mapped_address);
+#endif
     case Mem:           // fall through from previous case
         // release_mem_region(FPGA_SSW_IRQ, FPGA_REG_SIZE - SSW_IRQ);
     case None:          // fall through from previous case
@@ -3946,8 +3961,15 @@ static int __init simdrv_init_module(void)
     }
 #endif
 
-    // if ((fpga_mapped_address = ioremap_nocache((unsigned long)FPGA_REG_BASE, (size_t)FPGA_REG_SIZE)) != NULL)
-    if ((fpga_mapped_address = ioport_map((unsigned long)FPGA_REG_BASE, (size_t)FPGA_REG_SIZE)) != NULL)
+#ifndef SIM_DEV_BOARD
+    // Perform FPGA mapping
+    fpga_mapped_address = ioport_map((unsigned long)FPGA_REG_BASE, (size_t)FPGA_REG_SIZE);
+#else
+    fpga_mapped_address = (char *) simdrv_amp_address_map;
+#endif
+
+    // If mapped...
+    if (fpga_mapped_address != NULL)
     {
       DriverState = IOmap;
     } else {
@@ -3955,24 +3977,13 @@ static int __init simdrv_init_module(void)
       result = -EFAULT;
       goto fail;
     }
+
     //
     // check if we have correct FPGA version
     //
 
+    // FPGA version is now hard-coded
     g_FpgaVersion = 8; // default to new
-
-#if 0
-    g_FpgaVersion = ioread8(fpga_mapped_address + 0xC)
-                 + (ioread8(fpga_mapped_address + 0x8) << 8);
-    if ( g_FpgaVersion < MINIMUM_FPGA_BUILD_VERSION )
-    {
-        printk("simdrv: Wrong FPGA version - %d\n"
-               "        Upgrade FPGA to version %d or higher\n",
-               g_FpgaVersion, MINIMUM_FPGA_BUILD_VERSION);
-        result = -EBADF;
-        goto fail;
-    }
-#endif
 
     simdrv_InitUartVirtualFunctions();
 
@@ -4015,15 +4026,14 @@ static int __init simdrv_init_module(void)
     if ( result != 0 )
         goto fail;
 
-#if 0
-    // Clearing these bits sets the GPIO4 interrupt to Active High
-    // See Section 12.2 (pp. 388-390) of IXP4XX_IXC1100_Developer_Man_252480-3.pdf
-    gpio_line_config(SSW_IRQ_GPIO_NUMBER, IXP4XX_GPIO_IN);
-    set_irq_type(fpga_irq, IRQ_TYPE_LEVEL_HIGH);
-#endif
+    // Assume success
+    result = 0;
 
+#ifndef SIM_DEV_BOARD
     /* install SIM interrupt service routine */
     result = request_irq(fpga_irq, simdrv_isr, IRQF_SHARED, "phoneRemoteSIM", &simdrv_dev);
+#endif
+
     if (result)
     {
       printk(KERN_ALERT "simdrv: can't get assigned irq %i\n", fpga_irq);
