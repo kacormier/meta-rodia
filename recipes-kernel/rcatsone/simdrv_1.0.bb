@@ -15,4 +15,6 @@ SRC_URI += "file://circ_buffer.c"
 SRC_URI += "file://circ_buffer.h"
 SRC_URI += "file://simdrvmain.c"
 SRC_URI += "file://simdrv.h"
+SRC_URI += "file://fpgasup.c"
+SRC_URI += "file://fpgasup.h"
  

@@ -5,7 +5,9 @@
  * Copyright (c) 2005 Casabyte, Inc.  All Rights Reserved
  */
 
+#include <linux/kernel.h>
 #include <linux/ioctl.h>
+#include <asm/types.h>
 
 //#define SIMDRV_DEBUG_IOCTL          // if defined debug ioctl will be active
 
@@ -340,5 +342,12 @@ enum ioc_nr
 
 #define CMD_AND_EVENT_BIT_MASK  (0xF)
 
+// used in all SIM On/Off functions as a parameter
+
+typedef enum
+{
+    STATE_OFF,
+    STATE_ON
+} StateChange;
 
 #endif  /*_SIMDRV_H_*/

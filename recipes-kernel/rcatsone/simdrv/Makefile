@@ -1,4 +1,4 @@
-simdrv-objs := simdrvmain.o circ_buffer.o
+simdrv-objs := simdrvmain.o circ_buffer.o fpgasup.o
 obj-m := simdrv.o
 
 SRC := $(shell pwd)
