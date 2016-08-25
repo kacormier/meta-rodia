@@ -76,6 +76,7 @@
 #include "circ_buffer.h"
 #include "fpga.h"       // NUM_PHONES, FPGA Register Map for Phone-SIM interface
 #include "fpgasup.h"
+#include "ampsup.h"
 
 /*=======================INITIALIZATION STEPS DEFINITIONS==================
  */
@@ -391,6 +392,17 @@ static inline int simdrv_Transact(phoneSIMStruct *p_Dev, struct SimPdu * p_Pdu);
 #endif
 static void simdrv_SetUartDivisor(phoneSIMStruct *p_Dev, int32_t p_nDivisor);
 static inline int  simdrv_FillTxFifoIrq(phoneSIMStruct * p_Dev);
+
+// Device-agnostic dispatch routines
+int dev_AttachDevice(phoneSIMStruct *p_Dev, uint16_t p_DeviceType, uint16_t p_DeviceId);
+int dev_ClockSim(phoneSIMStruct *p_Dev, StateChange p_NewState);
+int dev_PowerSim (phoneSIMStruct *p_Dev, StateChange p_NewState);
+void dev_GetFpgaRegisters(phoneSIMStruct *p_Dev, int p_PhoneId);
+void dev_GetUartRegisters(phoneSIMStruct *p_Dev, int p_PhoneId);
+int dev_WarmResetSim(phoneSIMStruct *p_Dev);
+uint8_t dev_IsSimPresent(phoneSIMStruct *p_Dev);
+uint8_t dev_IsSimReady(phoneSIMStruct *p_Dev);
+
 /*==============================FUNCTIONS===============================
  */
 /*==============================DEBUG===================================
@@ -432,6 +444,87 @@ static inline long deltaTime(struct timeval *tv_before, struct timeval *tv_after
     long deltaSec = tv_after->tv_sec - tv_before->tv_sec;
     return ((tv_after->tv_usec + deltaSec*1000000) - tv_before->tv_usec);
 }
+
+/*====================Device Dispatch Functions=========================
+ */
+int dev_AttachDevice(phoneSIMStruct *theDevice,
+                     uint16_t p_DeviceType, uint16_t p_DeviceId)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    return(fpga_AttachDevice(&theDevice->m_Fpga, p_DeviceType, p_DeviceId));
+  else
+    return(amp_AttachDevice(&theDevice->m_Fpga, p_DeviceType, p_DeviceId));
+}
+
+int dev_ClockSim(phoneSIMStruct *theDevice,
+                 StateChange p_NewState)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    return(fpga_ClockSim(&theDevice->m_Fpga, p_NewState));
+  else
+    return(amp_ClockSim(&theDevice->m_Fpga, p_NewState));
+}
+
+int dev_PowerSim(phoneSIMStruct *theDevice,
+                 StateChange p_NewState)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    return(fpga_PowerSim(&theDevice->m_Fpga, p_NewState));
+  else
+    return(amp_PowerSim(&theDevice->m_Fpga, p_NewState));
+}
+
+void dev_GetFpgaRegisters(phoneSIMStruct *theDevice,
+                          int p_PhoneId)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    fpga_GetFpgaRegisters(&theDevice->m_Fpga, p_PhoneId);
+  else
+    amp_GetFpgaRegisters(&theDevice->m_Fpga, p_PhoneId);
+}
+
+void dev_GetUartRegisters(phoneSIMStruct *theDevice,
+                          int p_PhoneId)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    fpga_GetUartRegisters(&theDevice->m_Uart, p_PhoneId);
+  else
+    amp_GetUartRegisters(&theDevice->m_Uart, p_PhoneId);
+}
+
+int dev_WarmResetSim(phoneSIMStruct *theDevice)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    return(fpga_WarmResetSim(&theDevice->m_Fpga));
+  else
+    return(amp_WarmResetSim(&theDevice->m_Fpga));
+}
+
+uint8_t dev_IsSimPresent(phoneSIMStruct *theDevice)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    return(fpga_IsSimPresent(&theDevice->m_Fpga));
+  else
+    return(amp_IsSimPresent(&theDevice->m_Fpga));
+}
+
+uint8_t dev_IsSimReady(phoneSIMStruct *theDevice)
+{
+  // If AMP...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    return(fpga_IsSimReady(&theDevice->m_Fpga));
+  else
+    return(amp_IsSimReady(&theDevice->m_Fpga));
+}
+
+
 /*==============================HW Functions============================
  */
 //
@@ -1007,7 +1100,7 @@ int simdrv_Config(phoneSIMStruct *p_Dev, struct SimConfigHeader *p_Config, uint8
             if ( copy_from_user(&attachCfg, arg, p_Config->m_Length))
                 return -EFAULT;
 
-            return fpga_AttachDevice(&p_Dev->m_Fpga, attachCfg.m_DeviceType, attachCfg.m_DeviceId);
+            return dev_AttachDevice(p_Dev, attachCfg.m_DeviceType, attachCfg.m_DeviceId);
         }
         case SIMCONFIG_DEBUG:
         {
@@ -1321,7 +1414,7 @@ static int simdrv_open(struct inode * inode, struct file * file)
     // enable interrupts - in special ioctl
     simdrv_isr_rx_enable(pDev);
 
-    fpga_PowerSim(&pDev->m_Fpga, STATE_OFF);        // power off the SIM
+    dev_PowerSim(pDev, STATE_OFF);        // power off the SIM
 
     return 0;
 }
@@ -1370,13 +1463,13 @@ static int simdrv_release(struct inode * inode, struct file * file)
     if ( pFile->m_ExclusiveAccess == EXCLUSIVE_ACCESS_ON )
         pDev->m_ExclusiveFlag  = EXCLUSIVE_ACCESS_OFF;       // unlock files on this UAR
 
-    fpga_PowerSim(&pDev->m_Fpga, STATE_OFF);        // power off the SIM
+    dev_PowerSim(pDev, STATE_OFF);        // power off the SIM
 
     // free file structure allocated in the open
     kfree((void*)pFile);
     file->private_data = NULL;
 
-    fpga_AttachDevice(&pDev->m_Fpga, DEVTYPE_NODEVICE, DEVTYPE_NODEVICE);
+    dev_AttachDevice(pDev, DEVTYPE_NODEVICE, DEVTYPE_NODEVICE);
 
     return 0;
 }
@@ -1747,18 +1840,18 @@ if ( tmp > 50 )
             }
             break;
             case TEQUAL0_POWER:
-                retval = fpga_PowerSim(&pDev->m_Fpga,(arg) ? STATE_ON : STATE_OFF);
+                retval = dev_PowerSim(pDev,(arg) ? STATE_ON : STATE_OFF);
                 break;
             case TEQUAL0_CLOCK:
-                retval = fpga_ClockSim(&pDev->m_Fpga,(arg) ? STATE_ON : STATE_OFF);
+                retval = dev_ClockSim(pDev,(arg) ? STATE_ON : STATE_OFF);
                 break;
             case TEQUAL0_STATUS:
             {
                 uint32_t    nStatusReturn;
                 //printk("========ioctl TEQUAL0_STATUS\n");
                 nStatusReturn =
-                      ((fpga_IsSimPresent(&pDev->m_Fpga)) ? (TEQUAL0_STATUS_PRESENT) : 0)
-                    + ((fpga_IsSimReady(&pDev->m_Fpga))   ? (TEQUAL0_STATUS_READY)   : 0);
+                      ((dev_IsSimPresent(pDev)) ? (TEQUAL0_STATUS_PRESENT) : 0)
+                    + ((dev_IsSimReady(pDev))   ? (TEQUAL0_STATUS_READY)   : 0);
 
                 if ( copy_to_user((void*)arg, &nStatusReturn, sizeof(nStatusReturn)) )
                         return -EFAULT;
@@ -2296,9 +2389,9 @@ int simdrv_ResetSim(phoneSIMStruct *p_Dev, struct SimAtr * p_Atr)
     p_Dev->m_NeedsReset = 1;
 
     // to initiate SIM Answer To Reset message (from SIM)
-    if ( !fpga_IsSimPresent(&p_Dev->m_Fpga) )
+    if ( !dev_IsSimPresent(p_Dev) )
     {
-        fpga_PowerSim(&p_Dev->m_Fpga,STATE_OFF);    // Power Off Socket
+        dev_PowerSim(p_Dev,STATE_OFF);    // Power Off Socket
         return -ENOMEDIUM;
     }
 
@@ -2312,7 +2405,7 @@ int simdrv_ResetSim(phoneSIMStruct *p_Dev, struct SimAtr * p_Atr)
 
     // first reset (warm or cold ??) the SIM and
     // set T0_CFG UART register to Direct coding convention + 3 re-transmits
-    fpga_WarmResetSim(&p_Dev->m_Fpga);
+    dev_WarmResetSim(p_Dev);
 
     // Next - read  ATR
     if ( (nRetval = simdrv_ReadAtr(p_Dev, p_Atr)) != 0 )
@@ -2504,13 +2597,13 @@ static void simdrv_TimerFunction(unsigned long p_nJifs)
     for ( sim = 0; sim < NUM_DEVICES; sim++ )
     {
         phoneSIMStruct      *dev = &phoneSIMData[sim];
-        volatile uint8_t    bySimPresent = fpga_IsSimPresent(&dev->m_Fpga);
+        volatile uint8_t    bySimPresent = dev_IsSimPresent(dev);
         if ( bySimPresent != dev->m_SimPresent)
         {
             dev->m_NeedsReset = 1;
 //          dev->Flags.MediaChange = 1;
             // power OFF SIM
-            fpga_PowerSim(&dev->m_Fpga, STATE_OFF);
+            dev_PowerSim(dev, STATE_OFF);
 
             dev->m_ActualIrEvents++;
             // signal SIGIO to application
@@ -2567,7 +2660,7 @@ int simdrv_WaitInsert(phoneSIMStruct * p_Dev, uint16_t p_nNeeded)
     {
         p_nNeeded &= ~BLOCK_IR_EVENT;
     }
-    if ((p_nNeeded == BLOCK_INSERTED) && (fpga_IsSimPresent(&p_Dev->m_Fpga)))
+    if ((p_nNeeded == BLOCK_INSERTED) && (dev_IsSimPresent(p_Dev)))
     {
         p_nNeeded &= ~BLOCK_INSERTED;
     }
@@ -2611,7 +2704,7 @@ int simdrv_Insert(phoneSIMStruct * p_Dev, struct SimInsert * p_Insert)
     if ( p_Insert->m_Timeout && nRetWait == 0 )
         return -ETIMEDOUT;
 
-    p_Insert->m_SimPresent   = ((fpga_IsSimPresent(&p_Dev->m_Fpga)) ? 1 : 0);
+    p_Insert->m_SimPresent   = ((dev_IsSimPresent(p_Dev)) ? 1 : 0);
     p_Insert->m_IrEventCount = p_Dev->m_AcknowledgedIrEvents = p_Dev->m_ActualIrEvents;
 //??????        p_Dev->Flags.MediaChange = 0; // Immaterial at this point, the app knows the truth 8-)
 
@@ -3296,9 +3389,9 @@ static inline int simdrv_init(void)
         spin_lock_init(&PD->m_ConfigLock);
 
         // Precompute UART registers addresses.
-        fpga_GetUartRegisters(ph, &PD->m_Uart);
+        dev_GetUartRegisters(PD, ph);
         // Precompute phone/SIM control FPGA registers addresses.
-        fpga_GetFpgaRegisters(ph, &PD->m_Fpga);
+        dev_GetFpgaRegisters(PD, ph);
 
         // prepare default UART configuration for T=0 protocol
         PD->m_DefaultUartConfig.m_nBaudRate = DEFAUL_BAUD_RATE;

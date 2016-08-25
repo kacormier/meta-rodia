@@ -4,15 +4,13 @@
 #include "fpga.h"
 #include "simdrv.h"
 #include "fpgasup.h" 
-
-// Globals
-uint8_t * fpga_mapped_address;
+#include "ampsup.h"
 
 //
 // attach/detach phone/SIM
 //
-int fpga_AttachDevice( struct FpgaRegs *p_Fpga,
-                       uint16_t p_DeviceType, uint16_t p_DeviceId)
+int amp_AttachDevice( struct FpgaRegs *p_Fpga,
+                      uint16_t p_DeviceType, uint16_t p_DeviceId)
 {
     switch( p_DeviceType)     // 1 - phone (0 to 2); 2 - SIM (0 to 3)
     {
@@ -80,9 +78,9 @@ int fpga_AttachDevice( struct FpgaRegs *p_Fpga,
 //      state == 0 - disable clock
 //      state == 1 - enable clock
 //
-int fpga_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
+int amp_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 {
-    uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
+/*    uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
 
     if ( p_NewState == STATE_ON && ((byRconCsr & RCON_CSR_CLK) == 0) )
     {   // SIM clock is off - enable clock
@@ -104,7 +102,10 @@ int fpga_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
     {       // SIM clock is on - disable clock
         iowrite8((byRconCsr & ~RCON_CSR_CLK), p_Fpga->sim_rcon_csr);
     }
-    return 0;
+    return 0;*/
+    
+  // TBD
+  return(0);
 }
 
 //
@@ -116,9 +117,9 @@ int fpga_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 //  FOR NOW we always use class B - 3.0 volts
 //
 
-int fpga_PowerSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
+int amp_PowerSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 {
-    uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
+/*    uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
 
     if ( p_NewState == STATE_ON && ((byRconCsr & RCON_CSR_VCC) == 0) )
     {       // SIM power is off - switch it ON
@@ -151,13 +152,16 @@ int fpga_PowerSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
         //usleep(20000);            // A 10 mS minimum delay is required
                                     //  before applying another class.
     }
-    return 0;
+    return 0;*/
+
+    // TBD
+  return(0);
 }
 
 //
 // function fills up struct UartRegs with FPGA adresses
 //
-void fpga_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
+void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
 {
     // Precompute phone/UART control/SIM FPGA registers
     p_Fpga->sim_status = fpga_mapped_address + SIM_STATUS(p_PhoneId);
@@ -170,16 +174,15 @@ void fpga_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
     p_Fpga->ph_imr = fpga_mapped_address + LPH_IER(p_PhoneId);
 }
 
-
 //****************************  SSW_WARM_RESET  ********************************
 // SSW_Warm_Reset():  Perform a warm reset of the SIM.  The SIM should generate
 //  an ATR within 40,000 clock cycles.
 //
-int fpga_WarmResetSim(struct FpgaRegs *p_Fpga)
+int amp_WarmResetSim(struct FpgaRegs *p_Fpga)
 {
     uint8_t     byRconCsr ;
     // be shure that power and clock is ON
-    int         retval = fpga_ClockSim(p_Fpga, STATE_ON);
+    int         retval = amp_ClockSim(p_Fpga, STATE_ON);
 
     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
     iowrite8((byRconCsr & ~RCON_CSR_RST), p_Fpga->sim_rcon_csr);
