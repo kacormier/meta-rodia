@@ -6,6 +6,9 @@
 #include "fpgasup.h" 
 #include "ampsup.h"
 
+// Globals
+uint8_t * amp_mapped_address;
+
 //
 // attach/detach phone/SIM
 //
@@ -43,7 +46,7 @@ int amp_AttachDevice( struct FpgaRegs *p_Fpga,
             // attach to SIM
             iowrite8(0x80,p_Fpga->sim_rcon_csr);
             // recalculate SIM status register address
-            p_Fpga->sim_status = fpga_mapped_address + SIM_STATUS(p_DeviceId);
+            p_Fpga->sim_status = amp_mapped_address + SIM_STATUS(p_DeviceId);
         break;
         case DEVTYPE_DIRECT:    // attach phone to SIM directly disconnec UART
             if ( p_DeviceId > 3 )
@@ -163,16 +166,47 @@ int amp_PowerSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 //
 void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
 {
+    // Each AMP has its own phone so only ever phone 0 for amp
+    p_PhoneId = 0;
+    
     // Precompute phone/UART control/SIM FPGA registers
-    p_Fpga->sim_status = fpga_mapped_address + SIM_STATUS(p_PhoneId);
+    p_Fpga->sim_status = amp_mapped_address + SIM_STATUS(p_PhoneId);
 
-    p_Fpga->sim_rcon_csr  = fpga_mapped_address + RCON_SCR(p_PhoneId);
-    p_Fpga->sim_rcon_addr = fpga_mapped_address + RCON_ADDR(p_PhoneId);
+    p_Fpga->sim_rcon_csr  = amp_mapped_address + RCON_SCR(p_PhoneId);
+    p_Fpga->sim_rcon_addr = amp_mapped_address + RCON_ADDR(p_PhoneId);
 
-    p_Fpga->ph_ssr = fpga_mapped_address + LPH_SSR(p_PhoneId);
-    p_Fpga->ph_scr = fpga_mapped_address + LPH_SCR(p_PhoneId);
-    p_Fpga->ph_imr = fpga_mapped_address + LPH_IER(p_PhoneId);
+    p_Fpga->ph_ssr = amp_mapped_address + LPH_SSR(p_PhoneId);
+    p_Fpga->ph_scr = amp_mapped_address + LPH_SCR(p_PhoneId);
+    p_Fpga->ph_imr = amp_mapped_address + LPH_IER(p_PhoneId);
 }
+
+
+//
+// function fills up struct UartRegs with FPGA adresses
+//
+void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId)
+{
+    // Each AMP has its own phone so only ever phone 0 for amp
+    p_PhoneId = 0;
+    
+    // Precompute register addresses.
+    p_Uart->rbr = amp_mapped_address + UART_RHR(p_PhoneId);
+    p_Uart->ier = amp_mapped_address + UART_IER(p_PhoneId);
+    p_Uart->iir = amp_mapped_address + UART_IIR(p_PhoneId);
+    p_Uart->fcr = p_Uart->iir;
+    p_Uart->lcr = amp_mapped_address + UART_LCR(p_PhoneId);
+    p_Uart->lsr = amp_mapped_address + UART_LSR(p_PhoneId);
+    p_Uart->msr = amp_mapped_address + UART_MSR(p_PhoneId);
+    p_Uart->dll = amp_mapped_address + UART_DLLA(p_PhoneId);
+    p_Uart->dlh = amp_mapped_address + UART_DLHA(p_PhoneId);
+    p_Uart->spc = amp_mapped_address + UART_SPC(p_PhoneId);
+
+    p_Uart->t0ctr = amp_mapped_address + UART_T0_CTR(p_PhoneId);
+    p_Uart->rtl = amp_mapped_address + UART_RTL(p_PhoneId);
+    p_Uart->tfs = amp_mapped_address + UART_TFS(p_PhoneId);
+    p_Uart->tcd = amp_mapped_address + UART_TCD(p_PhoneId);
+}
+
 
 //****************************  SSW_WARM_RESET  ********************************
 // SSW_Warm_Reset():  Perform a warm reset of the SIM.  The SIM should generate

@@ -9,8 +9,14 @@
 #include <asm/types.h>
 
 // ----------------------------------------------------------------------------
+// Definitions
+// ----------------------------------------------------------------------------
+#define SIMDRV_AMP_FPGA_BASE_ADDRESS   0x5000;
+
+// ----------------------------------------------------------------------------
 // Globals
 // ----------------------------------------------------------------------------
+extern uint8_t * amp_mapped_address;
 
 // ----------------------------------------------------------------------------
 // Structures
@@ -29,6 +35,8 @@ int amp_PowerSim  (struct FpgaRegs *p_Fpga, StateChange p_NewState);
 
 void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId);
 
+void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId);
+
 int amp_WarmResetSim(struct FpgaRegs *p_Fpga);
 
 unsigned int amp_ioread8(void *theAddress);
@@ -38,29 +46,6 @@ void amp_iowrite8(uint8_t tjeValue, void *theAddress);
 // ----------------------------------------------------------------------------
 // Inlines
 // ----------------------------------------------------------------------------
-
-//
-// function fills up struct UartRegs with FPGA adresses
-//
-static inline void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId)
-{
-    // Precompute register addresses.
-    p_Uart->rbr = fpga_mapped_address + UART_RHR(p_PhoneId);
-    p_Uart->ier = fpga_mapped_address + UART_IER(p_PhoneId);
-    p_Uart->iir = fpga_mapped_address + UART_IIR(p_PhoneId);
-    p_Uart->fcr = p_Uart->iir;
-    p_Uart->lcr = fpga_mapped_address + UART_LCR(p_PhoneId);
-    p_Uart->lsr = fpga_mapped_address + UART_LSR(p_PhoneId);
-    p_Uart->msr = fpga_mapped_address + UART_MSR(p_PhoneId);
-    p_Uart->dll = fpga_mapped_address + UART_DLLA(p_PhoneId);
-    p_Uart->dlh = fpga_mapped_address + UART_DLHA(p_PhoneId);
-    p_Uart->spc = fpga_mapped_address + UART_SPC(p_PhoneId);
-
-    p_Uart->t0ctr = fpga_mapped_address + UART_T0_CTR(p_PhoneId);
-    p_Uart->rtl = fpga_mapped_address + UART_RTL(p_PhoneId);
-    p_Uart->tfs = fpga_mapped_address + UART_TFS(p_PhoneId);
-    p_Uart->tcd = fpga_mapped_address + UART_TCD(p_PhoneId);
-}
 
 //
 //  low level Status Byte functions
