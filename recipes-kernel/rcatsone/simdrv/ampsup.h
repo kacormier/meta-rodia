@@ -31,6 +31,10 @@ void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId);
 
 int amp_WarmResetSim(struct FpgaRegs *p_Fpga);
 
+unsigned int amp_ioread8(void *theAddress);
+
+void amp_iowrite8(uint8_t tjeValue, void *theAddress);
+
 // ----------------------------------------------------------------------------
 // Inlines
 // ----------------------------------------------------------------------------
@@ -103,6 +107,5 @@ int amp_ResetSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
     }
     return 0;
 }
-
 
 #endif  // _SIMDRV_AMPSUP_H_

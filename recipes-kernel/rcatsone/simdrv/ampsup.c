@@ -191,3 +191,14 @@ int amp_WarmResetSim(struct FpgaRegs *p_Fpga)
     iowrite8((byRconCsr | RCON_CSR_RST), p_Fpga->sim_rcon_csr);
     return retval;
 }
+
+unsigned int amp_ioread8(void *theAddress)
+{
+  // TBD - invoke USB call
+  return(0);
+}
+
+void amp_iowrite8(uint8_t tjeValue, void *theAddress)
+{
+  // TBD - invoke USB call
+}

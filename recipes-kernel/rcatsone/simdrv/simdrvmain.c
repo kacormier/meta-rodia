@@ -402,6 +402,8 @@ void dev_GetUartRegisters(phoneSIMStruct *p_Dev, int p_PhoneId);
 int dev_WarmResetSim(phoneSIMStruct *p_Dev);
 uint8_t dev_IsSimPresent(phoneSIMStruct *p_Dev);
 uint8_t dev_IsSimReady(phoneSIMStruct *p_Dev);
+unsigned int dev_ioread8(phoneSIMStruct *p_Dev, void *theAddress);
+void dev_iowrite8(phoneSIMStruct *p_Dev, uint8_t tjeValue, void *theAddress);
 
 /*==============================FUNCTIONS===============================
  */
@@ -422,18 +424,15 @@ void simdrv_DebugPrint(const char *p_pszLabel, int p_nPhoneId, uint8_t *p_Data, 
 void simdrv_DumpUartRegs(phoneSIMStruct *p_Dev)
 {
 printk("RBR=0x%2.2X; IER=0x%2.2X; IIR=0x%2.2X; LCR=0x%2.2X; MCR=0x??\n",
-        ioread8(p_Dev->m_Uart.rbr), ioread8(p_Dev->m_Uart.ier),
-        ioread8(p_Dev->m_Uart.iir), ioread8(p_Dev->m_Uart.lcr));
+        dev_ioread8(p_Dev, p_Dev->m_Uart.rbr), dev_ioread8(p_Dev, p_Dev->m_Uart.ier),
+        dev_ioread8(p_Dev, p_Dev->m_Uart.iir), dev_ioread8(p_Dev, p_Dev->m_Uart.lcr));
 printk("LSR=0x%2.2X; MSR=0x%2.2X; SCR=0x00; DLL=0x%2.2X; DLH=0x%2.2X\n",
-        ioread8(p_Dev->m_Uart.lsr), ioread8(p_Dev->m_Uart.msr),
-        ioread8(p_Dev->m_Uart.dll), ioread8(p_Dev->m_Uart.dlh));
+        dev_ioread8(p_Dev, p_Dev->m_Uart.lsr), dev_ioread8(p_Dev, p_Dev->m_Uart.msr),
+        dev_ioread8(p_Dev, p_Dev->m_Uart.dll), dev_ioread8(p_Dev, p_Dev->m_Uart.dlh));
 
 printk("TCF=0x??; TCT=0x%2.2X; RTL=0x%2.2X; TFS=0x%2.2X; TCD=0x%2.2X\n",
-        ioread8(p_Dev->m_Uart.t0ctr), ioread8(p_Dev->m_Uart.rtl),
-        ioread8(p_Dev->m_Uart.tfs), ioread8(p_Dev->m_Uart.tcd));
-
-//printk("RCON addr=0x%X; RCON csr=0x%X\n",ioread8(p_Dev->sim_rcon_addr),
-//                                 ioread8(p_Dev->sim_rcon_csr));
+        dev_ioread8(p_Dev, p_Dev->m_Uart.t0ctr), dev_ioread8(p_Dev, p_Dev->m_Uart.rtl),
+        dev_ioread8(p_Dev, p_Dev->m_Uart.tfs), dev_ioread8(p_Dev, p_Dev->m_Uart.tcd));
 }
 //#endif
 //
@@ -450,7 +449,7 @@ static inline long deltaTime(struct timeval *tv_before, struct timeval *tv_after
 int dev_AttachDevice(phoneSIMStruct *theDevice,
                      uint16_t p_DeviceType, uint16_t p_DeviceId)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_AttachDevice(&theDevice->m_Fpga, p_DeviceType, p_DeviceId));
   else
@@ -460,7 +459,7 @@ int dev_AttachDevice(phoneSIMStruct *theDevice,
 int dev_ClockSim(phoneSIMStruct *theDevice,
                  StateChange p_NewState)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_ClockSim(&theDevice->m_Fpga, p_NewState));
   else
@@ -470,7 +469,7 @@ int dev_ClockSim(phoneSIMStruct *theDevice,
 int dev_PowerSim(phoneSIMStruct *theDevice,
                  StateChange p_NewState)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_PowerSim(&theDevice->m_Fpga, p_NewState));
   else
@@ -480,7 +479,7 @@ int dev_PowerSim(phoneSIMStruct *theDevice,
 void dev_GetFpgaRegisters(phoneSIMStruct *theDevice,
                           int p_PhoneId)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     fpga_GetFpgaRegisters(&theDevice->m_Fpga, p_PhoneId);
   else
@@ -490,7 +489,7 @@ void dev_GetFpgaRegisters(phoneSIMStruct *theDevice,
 void dev_GetUartRegisters(phoneSIMStruct *theDevice,
                           int p_PhoneId)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     fpga_GetUartRegisters(&theDevice->m_Uart, p_PhoneId);
   else
@@ -499,7 +498,7 @@ void dev_GetUartRegisters(phoneSIMStruct *theDevice,
 
 int dev_WarmResetSim(phoneSIMStruct *theDevice)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_WarmResetSim(&theDevice->m_Fpga));
   else
@@ -508,7 +507,7 @@ int dev_WarmResetSim(phoneSIMStruct *theDevice)
 
 uint8_t dev_IsSimPresent(phoneSIMStruct *theDevice)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_IsSimPresent(&theDevice->m_Fpga));
   else
@@ -517,13 +516,32 @@ uint8_t dev_IsSimPresent(phoneSIMStruct *theDevice)
 
 uint8_t dev_IsSimReady(phoneSIMStruct *theDevice)
 {
-  // If AMP...
+  // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_IsSimReady(&theDevice->m_Fpga));
   else
     return(amp_IsSimReady(&theDevice->m_Fpga));
 }
 
+unsigned int dev_ioread8(phoneSIMStruct *theDevice, void *theAddress)
+{
+  // If probe...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+    // Avoid another call - go diect
+    return(ioread8(theAddress));
+  else
+    return(amp_ioread8(theAddress));
+}
+
+void dev_iowrite8(phoneSIMStruct *theDevice, uint8_t theValue, void *theAddress)
+{
+  // If probe...
+  if (theDevice->m_PhoneId < NUM_PHONES)
+     // Avoid another call - go diect
+    iowrite8(theValue, theAddress);
+  else
+    return(amp_iowrite8(theValue, theAddress));
+}
 
 /*==============================HW Functions============================
  */
@@ -532,9 +550,9 @@ uint8_t dev_IsSimReady(phoneSIMStruct *theDevice)
 static void simdrv_Uart2ClearRx(phoneSIMStruct *p_Dev)
 {
    // Clear rx data, line error, msr, and phone status interrupts.
-    iowrite8(FCR_FIFO_ENABLE | FCR_RX_FIFO_RST, p_Dev->m_Uart.fcr);
-    ioread8(p_Dev->m_Uart.msr);
-    ioread8(p_Dev->m_Fpga.ph_scr);
+    dev_iowrite8(p_Dev, FCR_FIFO_ENABLE | FCR_RX_FIFO_RST, p_Dev->m_Uart.fcr);
+    dev_ioread8(p_Dev, p_Dev->m_Uart.msr);
+    dev_ioread8(p_Dev, p_Dev->m_Fpga.ph_scr);
 }
 //
 //
@@ -561,8 +579,8 @@ static inline void simdrv_isr_rx_enable(phoneSIMStruct *p_Dev)
     if ( g_FpgaVersion >= 7 )    // new UART
         byUartIer |= IER_GLBL_IRQ_EN;   // UART-2 got global int disable bit
     simdrv_ClearRx(p_Dev);
-    iowrite8(byPhoneIer, p_Dev->m_Fpga.ph_imr);
-    iowrite8(byUartIer,  p_Dev->m_Uart.ier);
+    dev_iowrite8(p_Dev, byPhoneIer, p_Dev->m_Fpga.ph_imr);
+    dev_iowrite8(p_Dev, byUartIer,  p_Dev->m_Uart.ier);
 }
 //
 //  disable ALL UART and phone interrupts
@@ -571,24 +589,24 @@ static inline void simdrv_isr_rx_enable(phoneSIMStruct *p_Dev)
 //
 static inline void simdrv_isr_all_disable(phoneSIMStruct *p_Dev)
 {
-    iowrite8(0x00, p_Dev->m_Fpga.ph_imr);
-    iowrite8(0x00, p_Dev->m_Uart.ier);      //???? IER_GLBL_IRQ_EN
+    dev_iowrite8(p_Dev, 0x00, p_Dev->m_Fpga.ph_imr);
+    dev_iowrite8(p_Dev, 0x00, p_Dev->m_Uart.ier);      //???? IER_GLBL_IRQ_EN
 }
 //
 // enable only UART Tx interrupt
 //
 static inline void simdrv_isr_tx_enable(phoneSIMStruct *p_Dev)
 {
-    uint8_t  byUartIer = ioread8(p_Dev->m_Uart.ier);
-    iowrite8(byUartIer | IER_TX_IRQ_EN,  p_Dev->m_Uart.ier);
+    uint8_t  byUartIer = dev_ioread8(p_Dev, p_Dev->m_Uart.ier);
+    dev_iowrite8(p_Dev, byUartIer | IER_TX_IRQ_EN,  p_Dev->m_Uart.ier);
 }
 //
 // disable only UART Tx interrupt
 //
 static inline void simdrv_isr_tx_disable(phoneSIMStruct *p_Dev)
 {
-    uint8_t  byUartIer = ioread8(p_Dev->m_Uart.ier);
-    iowrite8(byUartIer & (~IER_TX_IRQ_EN),  p_Dev->m_Uart.ier);
+    uint8_t  byUartIer = dev_ioread8(p_Dev, p_Dev->m_Uart.ier);
+    dev_iowrite8(p_Dev, byUartIer & (~IER_TX_IRQ_EN),  p_Dev->m_Uart.ier);
 }
 
 //****************************  SIMDRV_UART_ISR  *******************************
@@ -604,7 +622,7 @@ static inline void simdrv_uart_isr(phoneSIMStruct *PD)
     volatile uint8_t        byLsr;
     uint16_t                rx_word = 0;
     uint16_t                tmpWrd = 0;
-    uint8_t                 byIir = ioread8(PD->m_Uart.iir);
+    uint8_t                 byIir = dev_ioread8(PD, PD->m_Uart.iir);
     uint8_t                 lsr_mask = (0x0F | g_LsrTxError); // Uart Rx error/dataready bits and Tx error bit.
 
 #ifdef SIM_DEBUG_INTERRUPT_TRACE
@@ -621,7 +639,7 @@ if ( cnt++ < 160 ) printk(KERN_ALERT "-uart-%d; iir=0x%X\n", PD->m_PhoneId, byIi
             PD->m_NeedsReset = 1;
       case 0x0C:  // Interrupt: Stale date in FIFO.
       case 0x04:  // Interrupt: Receive buffer full.
-        while ((byLsr = ioread8(PD->m_Uart.lsr)) != 0)
+        while ((byLsr = dev_ioread8(PD, PD->m_Uart.lsr)) != 0)
         {
 #ifdef SIM_DEBUG_INTERRUPT_TRACE
             printk("Loop LSR data: %d %X \n", PD->m_PhoneId, byLsr);
@@ -657,8 +675,7 @@ if ( cnt++ < 160 ) printk(KERN_ALERT "-uart-%d; iir=0x%X\n", PD->m_PhoneId, byIi
             // All receive errors will also have RBR data available.
             if(byLsr & 0x01)
             {
-               // rx_word = ((byLsr & 0x0E) << 8) | (uint8_t)ioread8((uint8_t*)(PD->m_Uart.rbr));
-               rx_word = (((uint8_t)ioread8((uint8_t*)(PD->m_Uart.rbr)) << 8) | (byLsr & 0x0E));
+               rx_word = (((uint8_t)dev_ioread8(PD, (uint8_t*)(PD->m_Uart.rbr)) << 8) | (byLsr & 0x0E));
                tmpWrd = cpu_to_le16(rx_word); 
 #ifdef SIM_DEBUG_INTERRUPT_TRACE
  // if ( PD->m_DebugFlag )
@@ -745,7 +762,7 @@ printk("%d#%X ", PD->m_PhoneId, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr]
             }
 #endif
             // send next byte and move pointer
-            iowrite8(PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr], PD->m_Uart.rbr);
+            dev_iowrite8(PD, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr], PD->m_Uart.rbr);
             PD->tx_cnt++;               // statistic
 
             PD->m_TxBuffer.m_nTxPtr++;
@@ -776,7 +793,7 @@ printk("%d#%X ", PD->m_PhoneId, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr]
                     // set new baudrate
                     // TODO - i know it takes some time (1.4 msec to send byte )
                     //        so everyone in system will wait on this loop
-                    while ((ioread8(PD->m_Uart.lsr) & (LSR_TRANSMIT_EMPTY)) == 0);
+                    while ((dev_ioread8(PD, PD->m_Uart.lsr) & (LSR_TRANSMIT_EMPTY)) == 0);
 
                     simdrv_SetUartDivisor(PD, PD->m_TxBuffer.m_BaudRateDivisor);
 
@@ -792,7 +809,7 @@ printk("%d#%X ", PD->m_PhoneId, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr]
             printk("ERROR: - TX TRYING TO SEND NO BYTES(%d) %d\n", PD->m_PhoneId, PD->m_TxBuffer.m_nTxPtr);
             //fix the damage - reset Tx interrupt by sending dummy byte
             simdrv_isr_tx_disable(PD);       // disable Tx interrupt
-            iowrite8(0, PD->m_Uart.rbr);
+            dev_iowrite8(PD, 0, PD->m_Uart.rbr);
          }
          }
          break;
@@ -803,7 +820,7 @@ printk("%d#%X ", PD->m_PhoneId, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr]
         break;
 
       case 0x00:  // Interrupt: Modem status register signal change.
-        ioread8(PD->m_Uart.msr);      // Clear the modem status interrupt.
+        dev_ioread8(PD, PD->m_Uart.msr);      // Clear the modem status interrupt.
         PD->bogus_uart_irq++;
         break;
 
@@ -828,7 +845,7 @@ inline static void PutEventToBuffer (phoneSIMStruct *p_Dev, uint16_t p_usEvent)
 //
 static inline void simdrv_phone_isr(phoneSIMStruct *PD)
 {
-    register uint8_t    tval = ioread8(PD->m_Fpga.ph_scr);
+    register uint8_t    tval = dev_ioread8(PD, PD->m_Fpga.ph_scr);
     uint16_t            rx_word;
     int8_t              chg_flg = 0;
 
@@ -971,7 +988,7 @@ static irqreturn_t simdrv_isr(int32_t irq, void *dev_id)
 
    iowrite8(0x01, ssw_irq_reg);
 
-   fpga_ssw_irq = ioread8(ssw_irq_reg);
+   fpga_ssw_irq = dev_ioread8(ssw_irq_reg);
    
    if(fpga_ssw_irq & FPGA_SSW_IRQ_PH0)  simdrv_phone_isr(&phoneSIMData[0]);
    if(fpga_ssw_irq & FPGA_SSW_IRQ_PH1)  simdrv_phone_isr(&phoneSIMData[1]);
@@ -1138,11 +1155,11 @@ static void simdrv_SetUartDivisor(phoneSIMStruct *p_Dev, int32_t p_nDivisor)
     spin_lock_irqsave(&p_Dev->m_ConfigLock, ulFlags);
 
     // Set the baud rate.
-    iowrite8(ioread8(p_Dev->m_Uart.lcr) | 0x80, p_Dev->m_Uart.lcr);  // Access divisor latch.
-    iowrite8((int8_t)p_nDivisor, p_Dev->m_Uart.dll);
-    iowrite8((int8_t)(p_nDivisor >> 8), p_Dev->m_Uart.dlh);
+    dev_iowrite8(p_Dev, dev_ioread8(p_Dev, p_Dev->m_Uart.lcr) | 0x80, p_Dev->m_Uart.lcr);  // Access divisor latch.
+    dev_iowrite8(p_Dev, (int8_t)p_nDivisor, p_Dev->m_Uart.dll);
+    dev_iowrite8(p_Dev, (int8_t)(p_nDivisor >> 8), p_Dev->m_Uart.dlh);
     //
-    iowrite8(ioread8(p_Dev->m_Uart.lcr) & 0x7F, p_Dev->m_Uart.lcr);  // Access divisor unlatch.
+    dev_iowrite8(p_Dev, dev_ioread8(p_Dev, p_Dev->m_Uart.lcr) & 0x7F, p_Dev->m_Uart.lcr);  // Access divisor unlatch.
 
     // clear Rx FIFO and stuff
     simdrv_ClearRx(p_Dev);
@@ -1170,15 +1187,15 @@ static int simdrv_UartConfig(phoneSIMStruct *p_Dev, struct SimConfigUart *p_Uart
     spin_lock_irqsave(&p_Dev->m_ConfigLock, ulFlags);
 // printk("simdrv_UartConfig - after spinlock\n");
     // Set the baud rate.
-    iowrite8(ioread8(p_Dev->m_Uart.lcr) | 0x80, p_Dev->m_Uart.lcr);  // Access divisor latch.
-    iowrite8((int8_t)nDivisor, p_Dev->m_Uart.dll);
-    iowrite8((int8_t)(nDivisor >> 8), p_Dev->m_Uart.dlh);
+    dev_iowrite8(p_Dev, dev_ioread8(p_Dev, p_Dev->m_Uart.lcr) | 0x80, p_Dev->m_Uart.lcr);  // Access divisor latch.
+    dev_iowrite8(p_Dev, (int8_t)nDivisor, p_Dev->m_Uart.dll);
+    dev_iowrite8(p_Dev, (int8_t)(nDivisor >> 8), p_Dev->m_Uart.dlh);
 
     // Disable access to the divisor latch and set the LCR (data bits, parity,
     // and stop bits).
-    iowrite8(p_UartConfig->m_chLcr & 0x3F, p_Dev->m_Uart.lcr);
+    dev_iowrite8(p_Dev, p_UartConfig->m_chLcr & 0x3F, p_Dev->m_Uart.lcr);
     // write SPC register
-    iowrite8(p_UartConfig->m_chSpc, p_Dev->m_Uart.spc);
+    dev_iowrite8(p_Dev, p_UartConfig->m_chSpc, p_Dev->m_Uart.spc);
 
     // clear Rx FIFO and stuff
     simdrv_ClearRx(p_Dev);
@@ -1516,7 +1533,7 @@ static int simdrv_SendResponseEx(phoneSIMStruct *p_Dev, uint16_t p_Length,
     // function will return after it put LAST response byte to the UART register
     // now we will wait untill this byte will leave the register == transmitting is finished
     // and then change the UART baud rate
-    while (((lsr = ioread8(p_Dev->m_Uart.lsr))
+    while (((lsr = dev_ioread8(p_Dev, p_Dev->m_Uart.lsr))
             & (LSR_TRANSMIT_EMPTY/* | LSR_TRANSMIT_HOLDING_EMPTY*/)) == 0 );
 
     return 0;
@@ -1875,8 +1892,8 @@ static int simdrv_proc_page(char *buf, char **start, off_t offset,
     for (ph = 0; ph < NUM_DEVICES; ++ph)
     {
         phoneSIMStruct * dev = phoneSIMData + ph;
-        uint8_t     dll = ioread8(dev->m_Uart.dll);
-        uint8_t     dlh = ioread8(dev->m_Uart.dlh);
+        uint8_t     dll = dev_ioread8(dev, dev->m_Uart.dll);
+        uint8_t     dlh = dev_ioread8(dev, dev->m_Uart.dlh);
         uint16_t    divisor = dll + (((uint16_t)dlh) << 8);
 
         len += sprintf(buf+len,"\nPhone %d.  Tx=%u bytes.  Rx=%u bytes, Baud Rate=%d\n",
@@ -1903,7 +1920,7 @@ static inline int simdrv_FillTxFifoIrq(phoneSIMStruct * p_Dev)
     uint8_t tfs;
     // copy to Tx FIFO while it has space
 
-    while ( (tfs = ioread8(p_Dev->m_Uart.tfs)) > 0 )
+    while ( (tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs)) > 0 )
     {
         while ( tfs-- > 0 )
         {
@@ -1912,7 +1929,7 @@ static inline int simdrv_FillTxFifoIrq(phoneSIMStruct * p_Dev)
   printk("FillTxFifo IRQ %d#%X ", p_Dev->m_PhoneId, p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr]);
 #endif
             // put next byte in Tx FIFO
-            iowrite8(p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr], p_Dev->m_Uart.rbr);
+            dev_iowrite8(p_Dev, p_Dev->m_TxBuffer.m_Buffer[p_Dev->m_TxBuffer.m_nTxPtr], p_Dev->m_Uart.rbr);
             p_Dev->tx_cnt++;               // statistic
             p_Dev->m_TxBuffer.m_nTxPtr++;
             // if we sent all bytes from buffer
@@ -1942,14 +1959,14 @@ static inline int simdrv_FillTxFifo(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, i
 
     // copy to Tx FIFO while it has space
 
-    tfs = ioread8(p_Dev->m_Uart.tfs);
-    while ( (tfs = ioread8(p_Dev->m_Uart.tfs)) > 0 )
+    tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
+    while ( (tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs)) > 0 )
     {
         while ( tfs-- > 0 )
         {
-            nfs = ioread8(p_Dev->m_Uart.tfs);
+            nfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
             // put next byte in Tx FIFO
-            iowrite8(*p_strBuf++, p_Dev->m_Uart.rbr);
+            dev_iowrite8(p_Dev, *p_strBuf++, p_Dev->m_Uart.rbr);
             p_Dev->tx_cnt++;               // statistic
             // if we do not have more bytes to send
             if ( --p_nBufLen <= 0 )
@@ -1958,7 +1975,7 @@ static inline int simdrv_FillTxFifo(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, i
     while ( ptr != p_strBuf )
         printk("%dx%X ", p_Dev->m_PhoneId, *ptr++);
 #endif
-    nfs = ioread8(p_Dev->m_Uart.tfs);
+    nfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
                 return 0;
             }
         }
@@ -1968,16 +1985,6 @@ static inline int simdrv_FillTxFifo(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, i
         printk("contd .. %dT%X ", p_Dev->m_PhoneId, *ptr++);
 #endif
 
-/*
-    while ( (tfs = ioread8(p_Dev->m_Uart.tfs)) > 0 )
-    {
-        // put next byte in Tx FIFO
-        iowrite8(*p_strBuf++, p_Dev->m_Uart.rbr);
-        // if we do not have more bytes to send
-        if ( --p_nBufLen <= 0 )
-            return 0;
-    }
-*/
     return p_nBufLen;
 }
 //
@@ -2063,7 +2070,7 @@ static void simdrv_Uart2SendAtr(phoneSIMStruct * p_Dev)
 
 
     // first - clear Tx FIFO
-    iowrite8(FCR_FIFO_ENABLE | FCR_TX_FIFO_RST, p_Dev->m_Uart.fcr);
+    dev_iowrite8(p_Dev, FCR_FIFO_ENABLE | FCR_TX_FIFO_RST, p_Dev->m_Uart.fcr);
 
     leftCnt = simdrv_FillTxFifo(p_Dev, atrBuf, atrSize);
     // whole ATR sequence fit in Tx FIFO - sendng done and no IRQ needed
@@ -3198,7 +3205,7 @@ printk("simdrv_ReadRawDataBlock  value=0x%X\n", p_strBuf[i]);
         if ( nReadCnt == nLeft )
         {
             // set UART Receive trigger level to maximum
-            iowrite8(0x7F, p_Dev->m_Uart.rtl);     //0x7F
+            dev_iowrite8(p_Dev, 0x7F, p_Dev->m_Uart.rtl);     //0x7F
             return p_nLen;
         }
 
@@ -3206,7 +3213,7 @@ printk("simdrv_ReadRawDataBlock  value=0x%X\n", p_strBuf[i]);
         {   // in case of event - we can not expect to receive all
             // requested/needed bytes - so return what we've got
             // set UART Receive trigger level to maximum
-            iowrite8(0x7F, p_Dev->m_Uart.rtl);     //0x7F
+            dev_iowrite8(p_Dev, 0x7F, p_Dev->m_Uart.rtl);     //0x7F
 #ifdef SIM_DEBUG_TRACE
             printk("simdrv: ReadRaw Event detected! req len=0x%X nReadCnt=0x%X\n", p_nLen, nReadCnt);
 #endif
@@ -3217,7 +3224,7 @@ printk("simdrv_ReadRawDataBlock  value=0x%X\n", p_strBuf[i]);
         nChunk = nLeft;
         // set new UART Receive trigger level
         //nChunk = (nLeft < 150) ? nLeft : 150;
-        iowrite8((uint8_t)(nChunk-1), p_Dev->m_Uart.rtl);
+        dev_iowrite8(p_Dev, (uint8_t)(nChunk-1), p_Dev->m_Uart.rtl);
 
         //do_gettimeofday (&tv_before);
         // and wait for data to arrive
@@ -3249,7 +3256,7 @@ printk("simdrv_ReadRawDataBlock  value=0x%X\n", p_strBuf[i]);
 
     // function should return from inside the loop -
     // and never reach this point
-    iowrite8(0x7F, p_Dev->m_Uart.rtl);     //0x7F
+    dev_iowrite8(p_Dev, 0x7F, p_Dev->m_Uart.rtl);     //0x7F
     return p_nLen;
 }
 //
@@ -3404,8 +3411,8 @@ static inline int simdrv_init(void)
         // configure UART to default configuration
         // simdrv_UartConfig(PD, &PD->m_DefaultUartConfig);
 
-        iowrite8(1, PD->m_Uart.t0ctr);  // clear UART Rx/Tx error counter
-        iowrite8(1, PD->m_Uart.tcd);    // set UART Tx inter-character delay (G20 needs it to be at least 1)
+        dev_iowrite8(PD, 1, PD->m_Uart.t0ctr);  // clear UART Rx/Tx error counter
+        dev_iowrite8(PD, 1, PD->m_Uart.tcd);    // set UART Tx inter-character delay (G20 needs it to be at least 1)
 
         // set statistics variables
         PD->tx_err_flg = 0;             // Set when the transmitter is unable to
@@ -3576,7 +3583,7 @@ static int __init simdrv_init_module(void)
 
 #ifndef SIM_DEV_BOARD
     /* install SIM interrupt service routine */
-    result = request_irq(fpga_irq, simdrv_isr, IRQF_SHARED, "phoneRemoteSIM", &simdrv_dev);
+    result = request_irq(ioread8irq, simdrv_isr, IRQF_SHARED, "phoneRemoteSIM", &simdrv_dev);
 #endif
 
     if (result)
