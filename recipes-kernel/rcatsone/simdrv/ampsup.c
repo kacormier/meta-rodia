@@ -1,5 +1,4 @@
 // Include support
-#include <asm/io.h>
 #include <linux/delay.h>    /* udelay */
 #include "fpga.h"
 #include "simdrv.h"
@@ -19,32 +18,32 @@ int amp_AttachDevice( struct FpgaRegs *p_Fpga,
     {
         case DEVTYPE_NODEVICE:          // 0 - detach any device
             iowrite8(0, p_Fpga->sim_rcon_addr);
-            iowrite8(0, p_Fpga->sim_rcon_csr);
-            iowrite8(0x00, p_Fpga->ph_ssr);      // phone not connected to the SIM
-            iowrite8(0x00, p_Fpga->ph_scr);      // SIM present
-            //iowrite8(0x00, p_Dev->ph_imr);    // disable interrupts
+            amp_iowrite8(0, p_Fpga->sim_rcon_csr);
+            amp_iowrite8(0x00, p_Fpga->ph_ssr);      // phone not connected to the SIM
+            amp_iowrite8(0x00, p_Fpga->ph_scr);      // SIM present
+            //amp_iowrite8(0x00, p_Dev->ph_imr);    // disable interrupts
         break;
         case DEVTYPE_PHONE:     // phone
             if ( p_DeviceId > 2 )
                 return -EFAULT;                 // wrong device Id
             // set phone address
-            iowrite8(0x80 | p_DeviceId, p_Fpga->sim_rcon_addr);
+            amp_iowrite8(0x80 | p_DeviceId, p_Fpga->sim_rcon_addr);
             // attach to phone
-            iowrite8(0x00, p_Fpga->sim_rcon_csr);
+            amp_iowrite8(0x00, p_Fpga->sim_rcon_csr);
 
             // phone is not connected to local SIM
-            iowrite8(0x00, p_Fpga->ph_ssr);
+            amp_iowrite8(0x00, p_Fpga->ph_ssr);
             // tell to phone that SIM present
-            iowrite8(0x01, p_Fpga->ph_scr);
-            //iowrite8(0x03, p_Dev->ph_imr);    // enable interrupts
+            amp_iowrite8(0x01, p_Fpga->ph_scr);
+            //amp_iowrite8(0x03, p_Dev->ph_imr);    // enable interrupts
         break;
         case DEVTYPE_SIM:                   // attach SIM slot to UART
             if ( p_DeviceId > 3 )
                 return -EFAULT;                 // wrong device Id
             // set SIM address
-            iowrite8(0x80 | p_DeviceId, p_Fpga->sim_rcon_addr);
+            amp_iowrite8(0x80 | p_DeviceId, p_Fpga->sim_rcon_addr);
             // attach to SIM
-            iowrite8(0x80,p_Fpga->sim_rcon_csr);
+            amp_iowrite8(0x80,p_Fpga->sim_rcon_csr);
             // recalculate SIM status register address
             p_Fpga->sim_status = amp_mapped_address + SIM_STATUS(p_DeviceId);
         break;
@@ -52,23 +51,23 @@ int amp_AttachDevice( struct FpgaRegs *p_Fpga,
             if ( p_DeviceId > 3 )
                 return -EFAULT;         // wrong device Id
             // disconnect SIM from UART
-            iowrite8(0x00, p_Fpga->sim_rcon_addr);
+            amp_iowrite8(0x00, p_Fpga->sim_rcon_addr);
             //
-            iowrite8(0x00,p_Fpga->sim_rcon_csr);
+            amp_iowrite8(0x00,p_Fpga->sim_rcon_csr);
 
             // connect phone to the local SIM
-            iowrite8(0x80 | p_DeviceId, p_Fpga->ph_ssr);
+            amp_iowrite8(0x80 | p_DeviceId, p_Fpga->ph_ssr);
             // local SIM connected
-            iowrite8(0x00, p_Fpga->ph_scr);
-            //iowrite8(0x03, p_Dev->ph_imr);    // enable interrupts
+            amp_iowrite8(0x00, p_Fpga->ph_scr);
+            //amp_iowrite8(0x03, p_Dev->ph_imr);    // enable interrupts
         break;
         case DEVTYPE_MONITOR:
             if ( p_DeviceId > 2 )               // should be attache dto UART connected to the phone
                 return -EFAULT;                 // wrong device Id
             // set SIM address
-            iowrite8(0x80 | p_DeviceId, p_Fpga->sim_rcon_addr);
+            amp_iowrite8(0x80 | p_DeviceId, p_Fpga->sim_rcon_addr);
             // attach to SIM
-            iowrite8(0x00,p_Fpga->sim_rcon_csr);
+            amp_iowrite8(0x00,p_Fpga->sim_rcon_csr);
         break;
         default:
             return -EFAULT;             // device type is not allowed
@@ -83,7 +82,7 @@ int amp_AttachDevice( struct FpgaRegs *p_Fpga,
 //
 int amp_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 {
-/*    uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
+/*    uint8_t     byRconCsr = amp_ioread8(p_Fpga->sim_rcon_csr);
 
     if ( p_NewState == STATE_ON && ((byRconCsr & RCON_CSR_CLK) == 0) )
     {   // SIM clock is off - enable clock
@@ -93,9 +92,9 @@ int amp_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
             if ((retval = fpga_PowerSim(p_Fpga,STATE_ON)) != 0)
                 return retval;
         }
-        byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
+        byRconCsr = amp_ioread8(p_Fpga->sim_rcon_csr);
         // enable clock
-        iowrite8((byRconCsr | RCON_CSR_CLK), p_Fpga->sim_rcon_csr);
+        amp_iowrite8((byRconCsr | RCON_CSR_CLK), p_Fpga->sim_rcon_csr);
         udelay(120);                // Wait at least 200 clock cycles for the SIM to tri-state the I/O line.
 
         // how can I check that clock is ON ????
@@ -103,7 +102,7 @@ int amp_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
     }
     else if ( p_NewState == STATE_OFF && ((byRconCsr & RCON_CSR_CLK) != 0) )
     {       // SIM clock is on - disable clock
-        iowrite8((byRconCsr & ~RCON_CSR_CLK), p_Fpga->sim_rcon_csr);
+        amp_iowrite8((byRconCsr & ~RCON_CSR_CLK), p_Fpga->sim_rcon_csr);
     }
     return 0;*/
     
@@ -122,18 +121,18 @@ int amp_ClockSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 
 int amp_PowerSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
 {
-/*    uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
+/*    uint8_t     byRconCsr = amp_ioread8(p_Fpga->sim_rcon_csr);
 
     if ( p_NewState == STATE_ON && ((byRconCsr & RCON_CSR_VCC) == 0) )
     {       // SIM power is off - switch it ON
         uint8_t     bySst;
         int         i = 0;
-        iowrite8((byRconCsr | RCON_CSR_VCC3), p_Fpga->sim_rcon_csr);
+        amp_iowrite8((byRconCsr | RCON_CSR_VCC3), p_Fpga->sim_rcon_csr);
         // busy wait untill VCC is ready
 
         for (i = 0; i < 10000; i++)
         {
-            bySst = ioread8(p_Fpga->sim_status);
+            bySst = amp_ioread8(p_Fpga->sim_status);
             if ( (bySst & SST_VCC_READY) != 0 )
                 return 0;
             if ( (bySst & SST_VCC_FAULT) != 0 )
@@ -146,12 +145,12 @@ int amp_PowerSim(struct FpgaRegs *p_Fpga, StateChange p_NewState)
     else if ( p_NewState == STATE_OFF && ((byRconCsr & RCON_CSR_VCC) != 0) )
     {       // SIM power is on - switch it OFF
         byRconCsr &= ~RCON_CSR_RST;
-        iowrite8(byRconCsr, p_Fpga->sim_rcon_csr);
+        amp_iowrite8(byRconCsr, p_Fpga->sim_rcon_csr);
         //usleep(240);              // Match the cold reset delay (400 cycles min).
         byRconCsr &= ~RCON_CSR_CLK;
-        iowrite8(byRconCsr, p_Fpga->sim_rcon_csr);
+        amp_iowrite8(byRconCsr, p_Fpga->sim_rcon_csr);
         //usleep(20);
-        iowrite8((byRconCsr & ~RCON_CSR_VCC), p_Fpga->sim_rcon_csr);
+        amp_iowrite8((byRconCsr & ~RCON_CSR_VCC), p_Fpga->sim_rcon_csr);
         //usleep(20000);            // A 10 mS minimum delay is required
                                     //  before applying another class.
     }
@@ -218,11 +217,11 @@ int amp_WarmResetSim(struct FpgaRegs *p_Fpga)
     // be shure that power and clock is ON
     int         retval = amp_ClockSim(p_Fpga, STATE_ON);
 
-    byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
-    iowrite8((byRconCsr & ~RCON_CSR_RST), p_Fpga->sim_rcon_csr);
+    byRconCsr = amp_ioread8(p_Fpga->sim_rcon_csr);
+    amp_iowrite8((byRconCsr & ~RCON_CSR_RST), p_Fpga->sim_rcon_csr);
 
     udelay(240);                // Match the cold reset delay (400 cycles min).
-    iowrite8((byRconCsr | RCON_CSR_RST), p_Fpga->sim_rcon_csr);
+    amp_iowrite8((byRconCsr | RCON_CSR_RST), p_Fpga->sim_rcon_csr);
     return retval;
 }
 

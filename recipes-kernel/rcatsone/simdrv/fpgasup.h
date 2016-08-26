@@ -7,6 +7,7 @@
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
 #include <asm/types.h>
+#include <asm/io.h>
 
 // ----------------------------------------------------------------------------
 // Globals
