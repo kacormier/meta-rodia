@@ -19,4 +19,6 @@ SRC_URI += "file://fpgasup.c"
 SRC_URI += "file://fpgasup.h"
 SRC_URI += "file://ampsup.c"
 SRC_URI += "file://ampsup.h"
- 
+SRC_URI += "file://rcats_msgs.h"
+SRC_URI += "file://usbsup.c"
+SRC_URI += "file://usbsup.h"

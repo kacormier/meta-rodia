@@ -447,13 +447,19 @@ static inline long deltaTime(struct timeval *tv_before, struct timeval *tv_after
 /*====================Device Dispatch Functions=========================
  */
 int dev_AttachDevice(phoneSIMStruct *theDevice,
-                     uint16_t p_DeviceType, uint16_t p_DeviceId)
+                     uint16_t p_DeviceType, 
+                     uint16_t p_DeviceId)
 {
   // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
-    return(fpga_AttachDevice(&theDevice->m_Fpga, p_DeviceType, p_DeviceId));
+    return(fpga_AttachDevice(&theDevice->m_Fpga, 
+                             p_DeviceType, 
+                             p_DeviceId));
   else
-    return(amp_AttachDevice(&theDevice->m_Fpga, p_DeviceType, p_DeviceId));
+    return(amp_AttachDevice(theDevice->m_PhoneId, 
+                            &theDevice->m_Fpga, 
+                            p_DeviceType, 
+                            p_DeviceId));
 }
 
 int dev_ClockSim(phoneSIMStruct *theDevice,
@@ -461,9 +467,12 @@ int dev_ClockSim(phoneSIMStruct *theDevice,
 {
   // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
-    return(fpga_ClockSim(&theDevice->m_Fpga, p_NewState));
+    return(fpga_ClockSim(&theDevice->m_Fpga, 
+                         p_NewState));
   else
-    return(amp_ClockSim(&theDevice->m_Fpga, p_NewState));
+    return(amp_ClockSim(theDevice->m_PhoneId,
+                        &theDevice->m_Fpga, 
+                        p_NewState));
 }
 
 int dev_PowerSim(phoneSIMStruct *theDevice,
@@ -471,9 +480,12 @@ int dev_PowerSim(phoneSIMStruct *theDevice,
 {
   // If probe...
   if (theDevice->m_PhoneId < NUM_PHONES)
-    return(fpga_PowerSim(&theDevice->m_Fpga, p_NewState));
+    return(fpga_PowerSim(&theDevice->m_Fpga, 
+                         p_NewState));
   else
-    return(amp_PowerSim(&theDevice->m_Fpga, p_NewState));
+    return(amp_PowerSim(theDevice->m_PhoneId, 
+                        &theDevice->m_Fpga, 
+                        p_NewState));
 }
 
 void dev_GetFpgaRegisters(phoneSIMStruct *theDevice,
@@ -502,7 +514,7 @@ int dev_WarmResetSim(phoneSIMStruct *theDevice)
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_WarmResetSim(&theDevice->m_Fpga));
   else
-    return(amp_WarmResetSim(&theDevice->m_Fpga));
+    return(amp_WarmResetSim(theDevice->m_PhoneId, &theDevice->m_Fpga));
 }
 
 uint8_t dev_IsSimPresent(phoneSIMStruct *theDevice)
@@ -511,7 +523,7 @@ uint8_t dev_IsSimPresent(phoneSIMStruct *theDevice)
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_IsSimPresent(&theDevice->m_Fpga));
   else
-    return(amp_IsSimPresent(&theDevice->m_Fpga));
+    return(amp_IsSimPresent(theDevice->m_PhoneId, &theDevice->m_Fpga));
 }
 
 uint8_t dev_IsSimReady(phoneSIMStruct *theDevice)
@@ -520,7 +532,7 @@ uint8_t dev_IsSimReady(phoneSIMStruct *theDevice)
   if (theDevice->m_PhoneId < NUM_PHONES)
     return(fpga_IsSimReady(&theDevice->m_Fpga));
   else
-    return(amp_IsSimReady(&theDevice->m_Fpga));
+    return(amp_IsSimReady(theDevice->m_PhoneId, &theDevice->m_Fpga));
 }
 
 unsigned int dev_ioread8(phoneSIMStruct *theDevice, void *theAddress)
@@ -530,7 +542,7 @@ unsigned int dev_ioread8(phoneSIMStruct *theDevice, void *theAddress)
     // Avoid another call - go diect
     return(ioread8(theAddress));
   else
-    return(amp_ioread8(theAddress));
+    return(amp_ioread8(theDevice->m_PhoneId, theAddress));
 }
 
 void dev_iowrite8(phoneSIMStruct *theDevice, uint8_t theValue, void *theAddress)
@@ -540,7 +552,7 @@ void dev_iowrite8(phoneSIMStruct *theDevice, uint8_t theValue, void *theAddress)
      // Avoid another call - go diect
     iowrite8(theValue, theAddress);
   else
-    return(amp_iowrite8(theValue, theAddress));
+    amp_iowrite8(theDevice->m_PhoneId, theValue, theAddress);
 }
 
 /*==============================HW Functions============================
