@@ -329,6 +329,9 @@ amp_ioread8(
   // FPGA|GET|<address>|value
   myResponse = myInsertionPointer;
   
+      // Not much we can do here for now
+    printk(KERN_ALERT, "simdrv: usbio (%s)\n", myRequest);
+  
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
   

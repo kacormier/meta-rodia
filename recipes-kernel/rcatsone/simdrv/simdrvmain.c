@@ -2,8 +2,6 @@
  * Copyright (c) 2005 Casabyte, Inc.  All Rights Reserved
  */
 
-// Option for dev board handling
-#define SIM_DEV_BOARD
 
 #ifndef __KERNEL__
 #  define __KERNEL__
@@ -21,6 +19,17 @@
 #define DRIVER_VERSION_INT      (5000)      //5.000
 
 #include <linux/version.h>
+
+// Option for dev board handling
+
+// If new(er) kernel than Phoenix...
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
+// Enable dev board support
+#define SIM_DEV_BOARD
+#endif
+
+// Enable AMP support (ore not)
+// #define SIM_DEV_ENABLE_AMP_SUPPORT
 
 #ifndef KERNEL_VERSION /* pre-2.1.90 didn't have it */
 #  define KERNEL_VERSION(vers,rel,seq) ( ((vers)<<16) | ((rel)<<8) | (seq) )
@@ -320,7 +329,11 @@ typedef struct  FileStruct
 /*=========================== AMP SUPPORT DEFINITIONS =================
  */
 
+#ifdef SIM_DEV_ENABLE_AMP_SUPPORT
 #define NUM_AMPS  3   // Max per probe
+#else
+#define NUM_AMPS  0   // No support
+#endif
 
 #ifdef SIM_DEV_BOARD
 // Address map array
@@ -3403,6 +3416,8 @@ static inline int simdrv_init(void)
 
     for (ph = 0; ph < NUM_DEVICES; ++ph)
     {
+        printk(KERN_ALERT "Initializing phonesim %d\n",ph);
+        
         phoneSIMStruct * PD = phoneSIMData + ph;
 
         spin_lock_init(&PD->m_ConfigLock);
