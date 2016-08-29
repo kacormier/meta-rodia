@@ -16,7 +16,7 @@ write_file(
   char *data,
   ssize_t len)
 {
-  int ret;
+  int ret = 0;
   mm_segment_t old_fs;
   u32 pos = 0;
   struct file *file;
@@ -26,8 +26,11 @@ write_file(
 
   file = filp_open(filename, O_WRONLY|O_CREAT, 0777);
   
-  if (file == -1)
+  if (file == NULL)
+  {
+    ret = -EIO;
     goto out;
+  }
 
   while (pos < len) {
     ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);

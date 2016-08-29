@@ -1,4 +1,5 @@
 // Include support
+#include <linux/version.h>
 #include <linux/delay.h>    /* udelay */
 #include "fpga.h"
 #include "simdrv.h"
@@ -6,6 +7,12 @@
 #include "ampsup.h"
 #include "rcats_msgs.h"
 #include "usbsup.h"
+
+// If new(er) kernel than Phoenix...
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
+// Enable dev board support
+#define SIM_DEV_BOARD
+#endif
 
 // Globals
 uint8_t * amp_mapped_address;
@@ -303,6 +310,9 @@ amp_ioread8(
   char * myResponse = NULL;
   int ret = 0;
   long theResult;
+#ifndef SIM_DEV_BOARD      
+  char *myLeftoverPointer = 0;
+#endif
   
   // If buffer not primed...
   if (!myAddressPointer)
@@ -329,8 +339,8 @@ amp_ioread8(
   // FPGA|GET|<address>|value
   myResponse = myInsertionPointer;
   
-      // Not much we can do here for now
-    printk(KERN_ALERT, "simdrv: usbio (%s)\n", myRequest);
+  // Log for now
+  printk(KERN_ALERT "simdrv: usbio (%s)\n", myRequest);
   
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
@@ -366,8 +376,13 @@ amp_ioread8(
     // If okay so far...
     if (ret == 0)
     {
+#ifdef SIM_DEV_BOARD      
       // Convert to value
       ret = kstrtol(myResponse, 16, &theResult);
+#else
+      // Convert to value
+      theResult = simple_strtoull(myResponse, &myLeftoverPointer, 16);
+#endif
     }
   }
 

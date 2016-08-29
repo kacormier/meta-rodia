@@ -1013,7 +1013,7 @@ static irqreturn_t simdrv_isr(int32_t irq, void *dev_id)
 
    iowrite8(0x01, ssw_irq_reg);
 
-   fpga_ssw_irq = dev_ioread8(ssw_irq_reg);
+   fpga_ssw_irq = ioread8(ssw_irq_reg);
    
    if(fpga_ssw_irq & FPGA_SSW_IRQ_PH0)  simdrv_phone_isr(&phoneSIMData[0]);
    if(fpga_ssw_irq & FPGA_SSW_IRQ_PH1)  simdrv_phone_isr(&phoneSIMData[1]);
@@ -3612,7 +3612,7 @@ static int __init simdrv_init_module(void)
 
 #ifndef SIM_DEV_BOARD
     /* install SIM interrupt service routine */
-    result = request_irq(ioread8irq, simdrv_isr, IRQF_SHARED, "phoneRemoteSIM", &simdrv_dev);
+    result = request_irq(fpga_irq, simdrv_isr, IRQF_SHARED, "phoneRemoteSIM", &simdrv_dev);
 #endif
 
     if (result)
