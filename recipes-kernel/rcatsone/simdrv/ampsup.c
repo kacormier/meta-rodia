@@ -317,30 +317,33 @@ amp_ioread8(
   // If buffer not primed...
   if (!myAddressPointer)
   {
-    // Configure
+    // Initialize
     *myRequest = 0;
+        
+    // Configure
     myAddressPointer = myRequest;
-    myAddressPointer += sprintf(myRequest, "%s", RCTN_CMD_FPGA);
+    myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_FPGA);
     *myAddressPointer++ = RCTN_DELIM;
-    myAddressPointer += sprintf(myRequest, "%s", RCTN_CMD_GET);
+    myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_GET);
     *myAddressPointer++ = RCTN_DELIM;  
+    *myAddressPointer = 0;
   }
   
   // Set insertion pointer
   myInsertionPointer = myAddressPointer;
   
   // Format
-  myInsertionPointer += sprintf(myInsertionPointer, "%p%c", theAddress, RCTN_TERM);
+  myInsertionPointer += sprintf(myInsertionPointer, "%d%c", theAddress, RCTN_TERM);
   
   // Determine length
   myLength = (myInsertionPointer - myRequest) + 1;
   
-  // Pleace to look for response
+  // Place to look for response
   // FPGA|GET|<address>|value
   myResponse = myInsertionPointer;
   
-  // Log for now
-  printk(KERN_ALERT "simdrv: usbio (%s)\n", myRequest);
+  // Log for now (already terminated)
+  printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
   
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
@@ -389,14 +392,14 @@ amp_ioread8(
   // If failed...
   if (ret != 0)
   {
-    // Not much we can do here for now
-    printk("simdrv: usbio (%s) failed\n", myRequest);
+    // Log for now (already terminated)
+    printk(KERN_ALERT "simdrv: phonesim%d: failed %s", thePhoneId, myRequest);
   }    
   
   // Return result
   return(ret == 0 ? theResult : 0);
 }
-
+  
 int
 amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
 {
@@ -408,17 +411,20 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   char * myRequest = &myCommandBuffer[0];
   char * myResponse = NULL;  
   int ret = 0;
-  
+
   // If buffer not primed...
   if (!myAddressPointer)
   {
-    // Configure
+    // Initialize
     *myRequest = 0;
+      
+    // Configure
     myAddressPointer = myRequest;
-    myAddressPointer += sprintf(myRequest, "%s", RCTN_CMD_FPGA);
+    myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_FPGA);
     *myAddressPointer++ = RCTN_DELIM;
-    myAddressPointer += sprintf(myRequest, "%s", RCTN_CMD_SET);
+    myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_SET);
     *myAddressPointer++ = RCTN_DELIM;  
+    *myAddressPointer = 0;
   }
   
   // Set insertion pointer
@@ -427,14 +433,15 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   // Format
   myInsertionPointer += 
     sprintf(myInsertionPointer, 
-            "%p%c%d%c", 
+            "%d%c%d%c", 
             theAddress, RCTN_DELIM,
             theValue, RCTN_TERM);
   
   // Determine length
   myLength = (myInsertionPointer - myRequest) + 1;
   
-  // Determine 
+  // Log for now (already terminated)
+  printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
   
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
@@ -471,8 +478,8 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   // If failed...
   if (ret != 0)
   {
-    // Not much we can do here for now
-    printk("simdrv: usbio (%s) failed\n", myRequest);
+    // Log for now (already terminated)
+    printk(KERN_ALERT "simdrv: phonesim%d: failed %s", thePhoneId, myRequest);
   }    
   
   // Return result
