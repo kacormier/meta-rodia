@@ -28,8 +28,9 @@
 #define SIM_DEV_BOARD
 #endif
 
-// Enable AMP support (ore not)
-// #define SIM_DEV_ENABLE_AMP_SUPPORT
+// Enable AMP support (or not)
+#define SIM_DEV_ENABLE_AMP_SUPPORT
+#define SIM_DEV_ENABLE_WORKAROUNDS
 
 #ifndef KERNEL_VERSION /* pre-2.1.90 didn't have it */
 #  define KERNEL_VERSION(vers,rel,seq) ( ((vers)<<16) | ((rel)<<8) | (seq) )
@@ -2629,9 +2630,23 @@ static void simdrv_TimerFunction(unsigned long p_nJifs)
     for ( sim = 0; sim < NUM_DEVICES; sim++ )
     {
         phoneSIMStruct      *dev = &phoneSIMData[sim];
+        
+// For now skip AMP logic untill details figured out
+#ifdef SIM_DEV_ENABLE_WORKAROUNDS
+        if (sim >= NUM_PHONES)
+        {
+          continue;
+        }
+#endif
+ 
         volatile uint8_t    bySimPresent = dev_IsSimPresent(dev);
         if ( bySimPresent != dev->m_SimPresent)
         {
+            // Log insertion change
+            printk(KERN_ALERT 
+                   "simdrv: phonesim%d: insertion (%d -> %d)\n",
+                   sim, dev->m_SimPresent, bySimPresent);
+            
             dev->m_NeedsReset = 1;
 //          dev->Flags.MediaChange = 1;
             // power OFF SIM
@@ -3416,7 +3431,7 @@ static inline int simdrv_init(void)
 
     for (ph = 0; ph < NUM_DEVICES; ++ph)
     {
-        printk(KERN_ALERT "Initializing phonesim %d\n",ph);
+        printk(KERN_ALERT "simdrv: Initializing phonesim%d\n",ph);
         
         phoneSIMStruct * PD = phoneSIMData + ph;
 
