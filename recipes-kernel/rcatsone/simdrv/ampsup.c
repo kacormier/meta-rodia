@@ -333,7 +333,7 @@ amp_ioread8(
   myInsertionPointer = myAddressPointer;
   
   // Format
-  myInsertionPointer += sprintf(myInsertionPointer, "%d%c", (int) theAddress, RCTN_TERM);
+  myInsertionPointer += sprintf(myInsertionPointer, "%0x%x%c", (int) theAddress, RCTN_TERM);
   
   // Determine length
   myLength = (myInsertionPointer - myRequest) + 1;
@@ -433,7 +433,7 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   // Format
   myInsertionPointer += 
     sprintf(myInsertionPointer, 
-            "%d%c%d%c", 
+            "0x%x%c0x%x%c", 
             (int) theAddress, RCTN_DELIM,
             theValue, RCTN_TERM);
   
