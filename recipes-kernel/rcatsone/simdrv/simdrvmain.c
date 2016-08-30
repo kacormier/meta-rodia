@@ -3436,6 +3436,9 @@ static inline int simdrv_init(void)
         phoneSIMStruct * PD = phoneSIMData + ph;
 
         spin_lock_init(&PD->m_ConfigLock);
+        
+        // Set phone ID early - needed for access
+        PD->m_PhoneId = ph;
 
         // Precompute UART registers addresses.
         dev_GetUartRegisters(PD, ph);
@@ -3483,7 +3486,6 @@ static inline int simdrv_init(void)
             return  -ENOMEM;
         }
 
-        PD->m_PhoneId = ph;
         PD->m_PhoneForCopyEvents = NULL;
         PD->m_EventSrc = -1;
         PD->m_RxThreadStatus = SIM_THREAD_STOP;
