@@ -57,8 +57,8 @@ write_file(
   if (IS_ERR(file))
   {
     // Log
-    printk(KERN_ALERT "simdrv: phonesim%d: failed (open) %s", 
-           thePhoneId, filename);
+    printk(KERN_ALERT "simdrv: phonesim%d: failed (open %d) %s", 
+           thePhoneId, PTR_ERR(file), filename);
            
     ret = -EIO;
     goto out;
@@ -117,7 +117,8 @@ usbio(
   static char * myInstancePointer = NULL;
   char * myFileName = &myFileNameBuffer[0];
   char * myInsertionPointer = NULL;  
-    
+  int theCtrlId = 0;
+
   // If buffer not primed...
   if (!myInstancePointer)
   {
@@ -133,8 +134,9 @@ usbio(
   myInsertionPointer = myInstancePointer;  
   
   // Add instance (phonesim 3,4,5 to extusb 0,1,2)
-  thePhoneId -= 3;
-  *myInsertionPointer++ = '0' + thePhoneId;
+  theCtrlId = thePhoneId;
+  theCtrlId -= 3;
+  *myInsertionPointer++ = '0' + theCtrlId;
   *myInsertionPointer = 0;
   myInsertionPointer += sprintf(myInsertionPointer, "_ctrl");
   

@@ -336,7 +336,7 @@ amp_ioread8(
   myInsertionPointer += sprintf(myInsertionPointer, "%0x%x%c", (int) theAddress, RCTN_TERM);
   
   // Determine length
-  myLength = (myInsertionPointer - myRequest) + 1;
+  myLength = (myInsertionPointer - myRequest);
   
   // Place to look for response
   // FPGA|GET|<address>|value
@@ -438,7 +438,7 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
             theValue, RCTN_TERM);
   
   // Determine length
-  myLength = (myInsertionPointer - myRequest) + 1;
+  myLength = (myInsertionPointer - myRequest);
   
   // Log for now (already terminated)
   printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
