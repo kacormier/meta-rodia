@@ -8,7 +8,14 @@
 #include <linux/fs.h>
 #include <linux/fcntl.h>
 #include <asm/uaccess.h>
+#include <asm/termios.h>
+#include <linux/serial.h>
+#include <linux/tty.h>
+#include <asm/ioctls.h>
+#include <linux/tty.h>
+#include <linux/poll.h>
 #include "usbsup.h"
+#include "rcats_msgs.h"
 
 // If new(er) kernel than Phoenix...
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
@@ -24,8 +31,221 @@
 #define SIM_DRV_AMP_CTRL_PATH "/var/run/dev/extusb"
 #endif
 
+
+// Configure terminal for target
+#if 0
+
+  // From application code com port configuration
+/*
+   tio.c_iflag = 0;  //eventually becomes 0x80000000, this bit is undefined in bits\termios.h, but cfmakeraw sets it.
+   tio.c_oflag = ONLCR; //0x04
+   tio.c_cflag = HUPCL | CLOCAL |CREAD | CS8;   //0x1CB1(octal=16261), but we're not setting baud rate here.
+   tio.c_lflag = ECHOE | ECHOK | ECHOCTL | ECHOKE;  //0xA30(octal=5060)
+*/
+
+  // Access terminal 
+  tty=(struct tty_struct*)file->private_data; 
+
+  tty->termios->c_iflag = 0; 
+  tty->termios->c_oflag = ONLCR;        // Map NL to CR-NL on output
+  
+  tty->termios->tio.c_cflag = 0;
+  tty->termios->tio.c_cflag != HUPCL;   // Lower modem control lines after last process closes the device (hang up).
+  tty->termios->tio.c_cflag != CLOCAL;  // Ignore modem control lines.
+  tty->termios->tio.c_cflag != CREAD;   // Enable receiver
+  tty->termios->tio.c_cflag != CS8;     // Character size mask
+  
+  tty->termios->tio.c_iflag = 0;
+  tty->termios->tio.c_iflag != ECHOE;   // If ICANON is also set, the ERASE character erases the preceding input character
+                                        //  and WERASE erases the preceding word
+  tty->termios->tio.c_iflag != ECHOK;   // If ICANON is also set, the KILL character erases the current line.
+  tty->termios->tio.c_iflag != ECHOCTL; // (not in POSIX) If ECHO is also set, terminal special characters other than TAB, 
+                                        // NL, START, and STOP are echoed as ^X, where X is the character with ASCII code 
+                                        // 0x40 greater than the special character. For example, character 0x08 (BS) is 
+                                        // echoed as ^H. [requires _BSD_SOURCE or _SVID_SOURCE] 
+  tty->termios->tio.c_iflag != ECHOKE;  // (not in POSIX) If ICANON is also set, KILL is echoed by erasing each character on 
+                                        // the line, as specified by ECHOE and ECHOPRT. [requires _BSD_SOURCE or _SVID_SOURCE] 
+
+  // From application code com port configuration
+/*                                        
+  if (setup_serial_port(m_fd, m_nBaudrate, 0, 1) != 0 )
+*/
+//  cfsetispeed(options, baud_mask);
+//  cfsetospeed(options, baud_mask);
+  tty->termios->options->c_cflag |= B115200;
+
+  // From application code com port configuration
+/*      
+  cfmakeraw(&tio);
+*/
+
+  // This seems to be of no use since we do not set any of
+  // the following flags anyways
+  tty->termios->tio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP
+                  | INLCR | IGNCR | ICRNL | IXON);
+  tty->termios->tio.c_oflag &= ~OPOST;
+  tty->termios->tio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+  tty->termios->tio.c_cflag &= ~(CSIZE | PARENB);
+  tty->termios->tio.c_cflag |= CS8;  
+
+  // From application code com port configuration
+/*
+   tio.c_cc[VTIME] = vtime;
+   tio.c_cc[VMIN] = vmin;
+*/
+  tty->termios->c_cc[VTIME] = 1 ;       // Timeout in deciseconds for noncanonical read (TIME).
+  tty->termios->c_cc[VMIN]  = 0;        // Minimum number of characters for noncanonical read (MIN). 
+
+#endif
+
+//
+//  tty_setspeed
+//
+static void
+tty_setspeed(struct file *file, int speed)
+{
+  // If not development board...
+#ifndef SIM_DEV_BOARD
+
+  // Locals
+	mm_segment_t oldfs;
+	struct tty_struct *tty;
+	
+  // Set kernel context
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+
+	/*  Set speed */
+	struct termios settings;
+
+  // Access terminal 
+  tty=(struct tty_struct*)file->private_data; 
+
+	// tty_ioctl(f, TCGETS, (unsigned long)&settings);
+	// ile->f_op->ioctl(file->f_dentry->d_inode, file, TCGETS, (unsigned long)&settings);
+	
+	tty->termios->c_iflag = 0;
+	tty->termios->c_oflag = 0;
+	tty->termios->c_lflag = 0;
+	tty->termios->c_cflag = CLOCAL | CS8 | CREAD;
+	tty->termios->c_cc[VMIN] = 1;
+	tty->termios->c_cc[VTIME] = 0;
+	switch (speed) {
+    case 115200:{
+		tty->termios->c_cflag |= B2400;
+	  }
+	  break;
+    default:{
+    		tty->termios->c_cflag |= B9600;
+    	}
+    	break;
+  }
+
+  // Restore context
+  set_fs(oldfs);
+  
+#endif  // SIM_DEV_BOARD
+}
+
+//
+//  tty_setspeed
+//
+#define BUFF_SIZE 64
+static int 
+tty_read(struct file *f, int timeout, unsigned char *string) 
+{ 
+  int result; 
+  unsigned char buff[BUFF_SIZE + 1]; 
+  int length; 
+  int index;
+
+  result = -1; 
+  
+  // If not errored...
+  if (!IS_ERR(f)) { 
+    
+    mm_segment_t oldfs; 
+
+    oldfs = get_fs(); 
+    set_fs(KERNEL_DS); 
+    
+    if (f->f_op->poll) 
+    { 
+      struct poll_wqueues table; 
+      struct timeval start, now; 
+  
+      do_gettimeofday(&start); 
+      poll_initwait(&table); 
+      
+      while (1)
+      {
+        long elapsed; 
+        int mask; 
+  
+        mask = f->f_op->poll(f, &table.pt); 
+  
+        if (mask & (POLLRDNORM | POLLRDBAND | POLLIN | 
+          POLLHUP | POLLERR)) 
+        { 
+            break; 
+        }
+        
+        do_gettimeofday(&now); 
+        elapsed = 
+        (1000000 * (now.tv_sec - start.tv_sec) + 
+        now.tv_usec - start.tv_usec); 
+        
+        if (elapsed > timeout) 
+        { 
+          break; 
+        }
+        
+        set_current_state(TASK_INTERRUPTIBLE); 
+        schedule_timeout(((timeout - 
+        elapsed) * HZ) / 10000); 
+      } 
+       
+      poll_freewait(&table); 
+    } 
+
+    f->f_pos = 0; 
+    
+    // if ((length = file->vfs_read(file, buff, BUFF_SIZE, &file->f_pos)) > 0) 
+    if ((length = f->f_op->read(f, buff, BUFF_SIZE, &f->f_pos)) > 0) 
+    { 
+#if 0
+      for (index = 0; index < length; index++)
+        printk(KERN_ALERT "simdrv: tty_read: data[%d] = 0x%x\n", 
+               index, buff[index]);
+#endif
+      
+      // Argh - AMP prepends \n\r to response buffer.
+      // We do not want this or it will corrupt our
+      // response buffer.
+      
+      // Terminate
+      buff[length] = '\0'; 
+      
+      // Copy skipping for two characters
+      strcpy(string, &buff[2]); 
+      
+      // Success
+      result = 0; 
+    } 
+    
+    // Restore context
+    set_fs(oldfs); 
+  }
+  
+  // Return result
+  return(result); 
+} 
+
+//
+//  tty_request
+//
 int 
-write_file(
+tty_request(
   int thePhoneId,
   char *filename, 
   char *data,
@@ -35,10 +255,20 @@ write_file(
   mm_segment_t old_fs;
   u32 pos = 0;
   struct file *file;
-  char * myData = 0;
+  char * response = 0;
 
+  // Set kernel context
   old_fs = get_fs();
   set_fs(get_ds());
+
+#if 0
+  for (ret = 0; ret < len; ret++)
+    printk(KERN_ALERT "simdrv: phonesim%d: data[%d] = 0x%x\n", 
+           thePhoneId, ret, data[ret]);
+#endif
+  
+  // Reset ret (maybe used above in debug)
+  ret = 0;
 
 // If development board open as regular file in /tmp.
 // This will allow us appending of commands to visually
@@ -47,7 +277,7 @@ write_file(
 // If target board open real device file. 
 #ifdef SIM_DEV_BOARD
   // Open control path
-  file = filp_open(filename, O_RDWR | O_NOCTTY | O_NONBLOCK |O_CREAT, 0777);
+  file = filp_open(filename, O_RDWR | O_NOCTTY | O_CREAT, 0777);
 #else
   // Open control path
   file = filp_open(filename, O_RDWR | O_NOCTTY | O_NONBLOCK, 0);
@@ -57,55 +287,106 @@ write_file(
   if (IS_ERR(file))
   {
     // Log
-    printk(KERN_ALERT "simdrv: phonesim%d: failed (open %d) %s", 
+    printk(KERN_ALERT "simdrv: phonesim%d: failed (open %d) %s\n", 
            thePhoneId, PTR_ERR(file), filename);
-           
+    
+    // Failed
     ret = -EIO;
+    
+    // Exit
     goto out;
   }
 
-  file->f_pos = 0;
-
-  while (pos < len) {
-           
-    // Log
-    printk(KERN_ALERT "simdrv: phonesim%d: vfs_write pos %d len %d fpos %d", 
-           thePhoneId, pos, len, file->f_pos);
+  // Configure tty
+  tty_setspeed(file, 115200);
+  
+  // Send command
+  ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
+  // ret = file->f_op->write(file, (char *)data + pos, len - pos, &file->f_pos);
+  // ret = tty->ops->write(tty, (char *)data + pos, len - pos);
     
-    ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
-    
-    /* TODO handle that correctly */
-    /*if (ret == -ERESTARTSYS) {
-            continue;
-    }*/
-    if (ret < 0)
-            goto out;
-    if (ret == 0) {
-            ret = -EIO;
-            goto out;
-    }
-    pos += ret;
-    file->f_pos += ret;
+  // Log
+  printk(KERN_ALERT 
+         "simdrv: phonesim%d: vfs_write pos %d len %d ret %d\n", 
+           thePhoneId, pos, len - pos, ret);  
+  
+  if (ret < 0)
+        goto out;
+        
+  if (ret == 0) 
+  {
+    ret = -EIO;
+    goto out;
+  }
+  
+// If development board we cannot get a response
+// back so let's fake it
+#ifdef SIM_DEV_BOARD
+  // request:     FPGA|GET|<address>
+  // response:    FPGA|GET|<address>|<value>|OK
+  
+  // request:     FPGA|SET|<address>|<value>
+  // response:    FPGA|GET|<address>|<value>|OK
+  
+  // Kill \r
+  data[len - 1] = 0;
+  
+  // Set response pointe
+  response = &data[len - 1];
+  
+  // If GET...
+  if (strstr(data, "GET") != NULL)
+  {
+    // Dummy value
+    response += sprintf(response, "0x%x", 0x00);
   }
 
+  // Terminate
+  response += sprintf(response, 
+                      "%c%s", 
+                      RCTN_DELIM, 
+                      RCTN_RESULT_SUCCESS);
+  
+  // Send request
+  pos = 0;
+  len = response - data;
+  ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
+    
+  // Log
+  printk(KERN_ALERT 
+         "simdrv: phonesim%d: vfs_write pos %d len %d ret %d\n", 
+           thePhoneId, pos, len - pos, ret); 
+  
+  // Force success
   ret = 0;
+      
+  // Done
+  goto out;
+  
+#endif
 
-  filp_close(file, 0);
+  // Read response
+  ret = tty_read(file, 1000, &data[0]);
 
 out:
-  
-  // If failed...
-  if (ret)
+
+  // If not errored...
+  if (!IS_ERR(file))
   {
-    // Log
-    printk(KERN_ALERT "simdrv: phonesim%d: failed (write) %s", 
-           thePhoneId , data);
+    // Close
+    filp_close(file, 0);
   }
   
+  // Restore context
   set_fs(old_fs);
-  return ret;
+  
+  // Return result
+  return(ret);
 }
 
+//
+//  usbio
+//
 int
 usbio(
   int thePhoneId, 
@@ -118,7 +399,8 @@ usbio(
   char * myFileName = &myFileNameBuffer[0];
   char * myInsertionPointer = NULL;  
   int theCtrlId = 0;
-
+  int ret = 0;
+  
   // If buffer not primed...
   if (!myInstancePointer)
   {
@@ -140,6 +422,28 @@ usbio(
   *myInsertionPointer = 0;
   myInsertionPointer += sprintf(myInsertionPointer, "_ctrl");
   
+  // Terminate the message with linefeed - needed for AMP
+  theBuffer[theLength++] = '\n';
+  
   // Do the work
-  return(write_file(thePhoneId, myFileName, theBuffer, theLength));
+  ret = tty_request(thePhoneId, myFileName, theBuffer, theLength);
+  
+  // Transactions to AMP puts control characters at end of message.
+  // Get rid of them.
+  myInsertionPointer = theBuffer;
+  while (*myInsertionPointer != 0)
+  {
+    // If carriage return or line feed...
+    if (*myInsertionPointer == '\r' ||
+        *myInsertionPointer == '\n')
+    {
+      // Kill it
+      *myInsertionPointer = 0;
+    }
+    // Onwards
+    myInsertionPointer++;
+  }
+  
+  // Return result
+  return(ret);
 }
