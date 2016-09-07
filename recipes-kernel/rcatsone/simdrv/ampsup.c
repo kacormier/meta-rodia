@@ -1,9 +1,13 @@
 // Include support
 #include <linux/version.h>
 #include <linux/delay.h>    /* udelay */
+#include <linux/file.h>
+#include <linux/fs.h>
+#include <asm/segment.h>
+#include <asm/uaccess.h>
 #include "fpga.h"
 #include "simdrv.h"
-#include "fpgasup.h" 
+#include "fpgasup.h"
 #include "ampsup.h"
 #include "rcats_msgs.h"
 #include "usbsup.h"
@@ -20,9 +24,9 @@ uint8_t * amp_mapped_address;
 //
 // attach/detach phone/SIM
 //
-int amp_AttachDevice(int thePhoneId, 
+int amp_AttachDevice(int thePhoneId,
                      struct FpgaRegs *p_Fpga,
-                     uint16_t p_DeviceType, 
+                     uint16_t p_DeviceType,
                      uint16_t p_DeviceId)
 {
   switch( p_DeviceType)     // 1 - phone (0 to 2); 2 - SIM (0 to 3)
@@ -92,7 +96,7 @@ int amp_AttachDevice(int thePhoneId,
 //      state == 1 - enable clock
 //
 int amp_ClockSim(int thePhoneId,
-                 struct FpgaRegs *p_Fpga, 
+                 struct FpgaRegs *p_Fpga,
                  StateChange p_NewState)
 {
   uint8_t     byRconCsr = amp_ioread8(thePhoneId, p_Fpga->sim_rcon_csr);
@@ -129,8 +133,8 @@ int amp_ClockSim(int thePhoneId,
 //  FOR NOW we always use class B - 3.0 volts
 //
 
-int amp_PowerSim(int thePhoneId, 
-                 struct FpgaRegs *p_Fpga, 
+int amp_PowerSim(int thePhoneId,
+                 struct FpgaRegs *p_Fpga,
                  StateChange p_NewState)
 {
 /*    uint8_t     byRconCsr = amp_ioread8(p_Fpga->sim_rcon_csr);
@@ -179,7 +183,7 @@ void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
 {
     // Each AMP has its own phone so only ever phone 0 for amp
     p_PhoneId = 0;
-    
+
     // Precompute phone/UART control/SIM FPGA registers
     p_Fpga->sim_status = amp_mapped_address + SIM_STATUS(p_PhoneId);
 
@@ -199,7 +203,7 @@ void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId)
 {
     // Each AMP has its own phone so only ever phone 0 for amp
     p_PhoneId = 0;
-    
+
     // Precompute register addresses.
     p_Uart->rbr = amp_mapped_address + UART_RHR(p_PhoneId);
     p_Uart->ier = amp_mapped_address + UART_IER(p_PhoneId);
@@ -223,9 +227,9 @@ void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId)
 // SSW_Warm_Reset():  Perform a warm reset of the SIM.  The SIM should generate
 //  an ATR within 40,000 clock cycles.
 //
-int 
+int
 amp_WarmResetSim(
-  int thePhoneId, 
+  int thePhoneId,
   struct FpgaRegs *p_Fpga)
 {
     uint8_t     byRconCsr ;
@@ -245,15 +249,106 @@ amp_WarmResetSim(
 //  return == 0 - SIM not present;
 //         != 0 - SIM present
 //
-uint8_t 
+uint8_t
 amp_IsSimPresent(
   int thePhoneId,
   struct FpgaRegs *p_Fpga)
 {
     return amp_ioread8(thePhoneId, p_Fpga->sim_status) & FPGA_SIM_STAT_SIM_PRESENT;
 }
+
 //
-uint8_t 
+// Get control device for AMP instance
+//
+
+#ifdef SIM_DEV_BOARD
+// Define path to control interface
+#define SIM_DRV_AMP_CTRL_PATH "/tmp/extusb"
+#else
+// Define path to control interface
+#define SIM_DRV_AMP_CTRL_PATH "/var/run/dev/extusb"
+#endif
+
+char *
+amp_getCtrlDevice(
+  int thePhoneId)
+{
+ // Buffer to spped things up
+  static char myFileNameBuffer[64];
+  static char * myInstancePointer = NULL;
+  char * myFileName = &myFileNameBuffer[0];
+  char * myInsertionPointer = NULL;
+  int theCtrlId = 0;
+
+  // If buffer not primed...
+  if (!myInstancePointer)
+  {
+    // Initialize
+    *myFileName = 0;
+
+    // Configure
+    myInstancePointer = myFileName;
+    myInstancePointer += sprintf(myInstancePointer, "%s", SIM_DRV_AMP_CTRL_PATH);
+    sprintf(myInstancePointer, "X_ctrl");
+
+    // myInstancePointer left pointing at X
+  }
+
+  // Set insertion pointer
+  myInsertionPointer = myInstancePointer;
+
+  // Add instance (phonesim 3,4,5 to extusb 0,1,2)
+  theCtrlId = thePhoneId;
+  theCtrlId -= 3;
+  *myInsertionPointer++ = '0' + theCtrlId;
+
+  // Return result
+  return(myFileName);
+}
+
+uint8_t
+amp_IsPhonePresent(
+  int thePhoneId)
+{
+  mm_segment_t old_fs;
+  struct file *file;
+  uint8_t isPresent = 0;
+  char * myControlDevice = 0;
+
+  // Set kernel context
+  old_fs = get_fs();
+  set_fs(get_ds());
+
+  // AMP presence is only known by presence of the ctrl device
+  myControlDevice = amp_getCtrlDevice(thePhoneId);
+
+  // Open control path
+  file = filp_open(myControlDevice, O_RDONLY | O_NOCTTY | O_NONBLOCK, 0);
+
+  // If errored...
+  if (IS_ERR(file))
+  {
+    // Not present
+    isPresent = 0;
+  }
+  else
+  {
+    // Is present
+    isPresent = 1;
+
+    // Close
+    filp_close(file, 0);
+  }
+
+  // Restore context
+  set_fs(old_fs);
+
+  // Return result
+  return(isPresent);
+}
+
+//
+uint8_t
 amp_IsSimReady(
   int thePhoneId,
   struct FpgaRegs *p_Fpga)
@@ -266,10 +361,10 @@ amp_IsSimReady(
 //      state == 0 - Reset line off
 //      state == 1 - Reset line on
 //
-int 
+int
 amp_ResetSim(
   int thePhoneId,
-  struct FpgaRegs *p_Fpga, 
+  struct FpgaRegs *p_Fpga,
   StateChange p_NewState)
 {
     uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
@@ -300,7 +395,7 @@ amp_ResetSim(
 //
 #define AMP_IO_BUFFER_SIZE  64
 
-unsigned int 
+unsigned int
 amp_ioread8(
   int thePhoneId,
   void *theAddress)
@@ -308,29 +403,29 @@ amp_ioread8(
   // Buffer to spped things up
   static char myCommandBuffer[AMP_IO_BUFFER_SIZE];
   static char * myAddressPointer = NULL;
-  
+
   char * myInsertionPointer = NULL;
   size_t myLength = 0;
   char * myRequest = &myCommandBuffer[0];
   char * myResponse = NULL;
   int ret = 0;
   long theResult;
-#ifndef SIM_DEV_BOARD      
+#ifndef SIM_DEV_BOARD
   char *myLeftoverPointer = 0;
 #endif
-  
+
   // If buffer not primed...
   if (!myAddressPointer)
   {
     // Initialize
     *myRequest = 0;
-        
+
     // Configure
     myAddressPointer = myRequest;
     myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_FPGA);
     *myAddressPointer++ = RCTN_DELIM;
     myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_GET);
-    *myAddressPointer++ = RCTN_DELIM;  
+    *myAddressPointer++ = RCTN_DELIM;
     *myAddressPointer = 0;
   }
   else
@@ -340,23 +435,23 @@ amp_ioread8(
            0,
            (AMP_IO_BUFFER_SIZE - (myAddressPointer - myRequest)));
   }
-  
+
   // Set insertion pointer
   myInsertionPointer = myAddressPointer;
-  
+
   // Format
   myInsertionPointer += sprintf(myInsertionPointer, "0x%x", (int) theAddress);
-  
+
   // Determine length
   myLength = (myInsertionPointer - myRequest);
-  
+
   // Place to look for response
   // FPGA|GET|<address>|value
   myResponse = myInsertionPointer;
-  
+
   // Log
   printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-  
+
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
 
@@ -365,46 +460,46 @@ amp_ioread8(
   {
     // Stuff failed into request
     sprintf(myInsertionPointer, " (fail)\n");
-    
+
     // Log for now
     printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-        
+
     // Return result
     return(ret);
   }
-  
+
   // If successful call...
   if (ret == 0)
-  {    
+  {
     // Pleace to look for response
     // FPGA|GET|<address>|OK|value\n
     // -------------------^
     myResponse = myInsertionPointer;
-  
+
     // If delimiter not present...
     if (*myResponse++ != RCTN_DELIM)
     {
       // Failed
       ret = 1;
     }
-    
+
     // If okay so far...
     if (ret == 0)
     {
       // If not matched OK...
-      if (strncmp(myResponse, 
-                  RCTN_RESULT_SUCCESS, 
+      if (strncmp(myResponse,
+                  RCTN_RESULT_SUCCESS,
                   strlen(RCTN_RESULT_SUCCESS)) != 0)
       {
         // Failed
-        ret = 1;        
+        ret = 1;
       }
     }
-    
+
     // If okay so far...
     if (ret == 0)
     {
-#ifdef SIM_DEV_BOARD      
+#ifdef SIM_DEV_BOARD
       // Convert to value
       ret = kstrtol(myResponse, 16, &theResult);
 #else
@@ -419,8 +514,8 @@ amp_ioread8(
   {
     // Log for now (already terminated)
     printk(KERN_ALERT "simdrv: phonesim%d: failed %s", thePhoneId, myRequest);
-  }    
-  
+  }
+
   // Return result
   return(ret == 0 ? theResult : 0);
 }
@@ -438,7 +533,7 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   char * myInsertionPointer = NULL;
   size_t myLength = 0;
   char * myRequest = &myCommandBuffer[0];
-  char * myResponse = NULL;  
+  char * myResponse = NULL;
   int ret = 0;
 
   // If buffer not primed...
@@ -446,13 +541,13 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   {
     // Initialize
     *myRequest = 0;
-      
+
     // Configure
     myAddressPointer = myRequest;
     myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_FPGA);
     *myAddressPointer++ = RCTN_DELIM;
     myAddressPointer += sprintf(myAddressPointer, "%s", RCTN_CMD_SET);
-    *myAddressPointer++ = RCTN_DELIM;  
+    *myAddressPointer++ = RCTN_DELIM;
     *myAddressPointer = 0;
   }
   else
@@ -462,72 +557,72 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
            0,
            (AMP_IO_BUFFER_SIZE - (myAddressPointer - myRequest)));
   }
-  
+
   // Set insertion pointer
   myInsertionPointer = myAddressPointer;
-  
+
   // Format
-  myInsertionPointer += 
-    sprintf(myInsertionPointer, 
-            "0x%x%c0x%x", 
+  myInsertionPointer +=
+    sprintf(myInsertionPointer,
+            "0x%x%c0x%x",
             (int) theAddress, RCTN_DELIM,
             theValue);
-  
+
   // Determine length
   myLength = (myInsertionPointer - myRequest);
 
   // Log
   printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-  
+
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
-  
+
   // If outright failure...
   if (ret != 0)
   {
     // Stuff failed into request
     sprintf(myInsertionPointer, " (fail)\n");
-    
+
     // Log for now
     printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-        
+
     // Return result
     return(ret);
   }
-    
+
   // If successful call...
   if (ret == 0)
-  {    
+  {
     // Pleace to look for response
     // FPGA|SET|<address>|<value>|OK\n
     // --------------------------^
     myResponse = myInsertionPointer;
-  
+
     // If delimiter not present...
     if (*myResponse++ != RCTN_DELIM)
     {
       // Failed
       ret = 1;
     }
-    
+
     // If okay so far...
     if (ret == 0)
     {
       // If not matched OK...
-      if (strncmp(myResponse, 
-                  RCTN_RESULT_SUCCESS, 
+      if (strncmp(myResponse,
+                  RCTN_RESULT_SUCCESS,
                   strlen(RCTN_RESULT_SUCCESS)) != 0)
       {
         // Failed
-        ret = 1;        
+        ret = 1;
       }
     }
   }
-  
+
   // Log for now
-  printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)", 
+  printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)",
          thePhoneId, myRequest, (ret == 0 ? "ok" : "fail"));
-  
+
   // Return result
-  return(ret);  
+  return(ret);
 }

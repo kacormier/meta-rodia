@@ -8,6 +8,8 @@
 #include <linux/spinlock.h>
 #include <asm/types.h>
 #include <asm/io.h>
+#include "simdrv.h"
+#include "fpga.h"
 
 // ----------------------------------------------------------------------------
 // Globals
