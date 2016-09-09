@@ -378,9 +378,11 @@ struct work_cont {
 	int    arg;
 } work_cont;
 
+// Our work queue functions
 static void simdrv_TimerFunctionWorker(struct work_struct *work);
 
-struct work_cont simdrv_wq;
+// Our work queues
+struct work_cont simdrv_timer_wq;
 
 
 uint8_t     g_LsrTxError;       // different UART type have this error bit in different places
@@ -1202,7 +1204,7 @@ static void simdrv_SetUartDivisor(phoneSIMStruct *p_Dev, int32_t p_nDivisor)
         return;
     g_uartDivisor[p_Dev->m_PhoneId] = p_nDivisor;
 
-    spin_lock_irqsave(&p_Dev->m_ConfigLock, ulFlags);
+ //   spin_lock_irqsave(&p_Dev->m_ConfigLock, ulFlags);
 
     // Set the baud rate.
     dev_iowrite8(p_Dev, dev_ioread8(p_Dev, p_Dev->m_Uart.lcr) | 0x80, p_Dev->m_Uart.lcr);  // Access divisor latch.
@@ -1214,7 +1216,7 @@ static void simdrv_SetUartDivisor(phoneSIMStruct *p_Dev, int32_t p_nDivisor)
     // clear Rx FIFO and stuff
     simdrv_ClearRx(p_Dev);
 
-    spin_unlock_irqrestore(&p_Dev->m_ConfigLock, ulFlags);
+//    spin_unlock_irqrestore(&p_Dev->m_ConfigLock, ulFlags);
 #ifdef SIM_DEBUG_TRACE
     printk("Set uartDivisor[%d]: Baudrate = %d\n", p_Dev->m_PhoneId, simdrv_DivisorToBaudrate(p_nDivisor));
 #endif
@@ -1234,7 +1236,7 @@ static int simdrv_UartConfig(phoneSIMStruct *p_Dev, struct SimConfigUart *p_Uart
     g_uartDivisor[p_Dev->m_PhoneId] = nDivisor;
 
 // printk("simdrv_UartConfig - before spinlock\n");
-    spin_lock_irqsave(&p_Dev->m_ConfigLock, ulFlags);
+//    spin_lock_irqsave(&p_Dev->m_ConfigLock, ulFlags);
 // printk("simdrv_UartConfig - after spinlock\n");
     // Set the baud rate.
     dev_iowrite8(p_Dev, dev_ioread8(p_Dev, p_Dev->m_Uart.lcr) | 0x80, p_Dev->m_Uart.lcr);  // Access divisor latch.
@@ -1250,7 +1252,7 @@ static int simdrv_UartConfig(phoneSIMStruct *p_Dev, struct SimConfigUart *p_Uart
     // clear Rx FIFO and stuff
     simdrv_ClearRx(p_Dev);
 
-    spin_unlock_irqrestore(&p_Dev->m_ConfigLock, ulFlags);
+//    spin_unlock_irqrestore(&p_Dev->m_ConfigLock, ulFlags);
 
     // Log insertion change
     printk(KERN_ALERT
@@ -1436,6 +1438,17 @@ static int simdrv_open(struct inode * inode, struct file * file)
     phoneSIMStruct  *pDev;
     FileStruct      *pFile = (FileStruct *)file->private_data;
     int ph = 0;
+
+    // Access phone instance
+    ph = (MINOR(inode->i_rdev) % NUM_DEVICES);
+    pDev = phoneSIMData + ph;
+
+    // If not initialized...
+    if (pDev->m_PhoneId == NUM_DEVICES)
+    {
+      // Initialize
+      simdrv_init_phone(ph);
+    }
 
     if (!pFile)                        /* non-devfs open support */
         file->private_data = pFile = kmalloc(sizeof(FileStruct), GFP_KERNEL);
@@ -2741,8 +2754,8 @@ struct work_struct *work_arg
 static void
 simdrv_TimerFunction(unsigned long p_nJifs)
 {
-	INIT_WORK(&simdrv_wq.real_work, simdrv_TimerFunctionWorker);
-	schedule_work(&simdrv_wq.real_work);
+  // Schedule work queue
+  schedule_work(&simdrv_timer_wq.real_work);
 
   // restart timer
   timer_IrCheck.expires = jiffies + p_nJifs;
@@ -3496,8 +3509,8 @@ static void simdrv_cleanup_module(void)
         break;
     }
 
-    //just in case:
-	  flush_work(&simdrv_wq.real_work);
+    // Flush work queues
+	flush_work(&simdrv_timer_wq.real_work);
 
     printk("simdrv: Module Unloading...\n");
     return;
@@ -3797,6 +3810,9 @@ static int __init simdrv_init_module(void)
                             NULL /* client data */);
 #endif
     DriverState = Statistic;
+
+    // Initialize work queues
+  	INIT_WORK(&simdrv_timer_wq.real_work, simdrv_TimerFunctionWorker);
 
     printk("simdrv: Loaded Successfully, irq = %d.\n", fpga_irq);
     return 0; /* succeed */
