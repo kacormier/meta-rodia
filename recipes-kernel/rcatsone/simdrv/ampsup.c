@@ -182,20 +182,28 @@ int amp_PowerSim(int thePhoneId,
 //
 // function fills up struct UartRegs with FPGA adresses
 //
+#define SIM_STATUS_OFFSET     0xa   // 0x2a
+#define SIM_RCON_CSR_OFFSET   0x9   // 0x29
+#define SIM_RCON_ADDR_OFFSET  0x8   // 0x28
+#define PH_SSR_OFFSET         0x4   // 0x24
+#define PH_SCR_OFFSET         0x4   // 0x25
+#define PH_IMR_OFFSET         0x6   // 0x26
+
 void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
 {
     // Each AMP has its own phone so only ever phone 0 for amp
     p_PhoneId = 0;
 
     // Precompute phone/UART control/SIM FPGA registers
-    p_Fpga->sim_status = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS(p_PhoneId));
+    // No easy mapping with current macros
+    p_Fpga->sim_status = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS_OFFSET);
 
-    p_Fpga->sim_rcon_csr  = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + RCON_SCR(p_PhoneId));
-    p_Fpga->sim_rcon_addr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + RCON_ADDR(p_PhoneId));
+    p_Fpga->sim_rcon_csr  = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_RCON_CSR_OFFSET);
+    p_Fpga->sim_rcon_addr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_RCON_ADDR_OFFSET);
 
-    p_Fpga->ph_ssr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + LPH_SSR(p_PhoneId));
-    p_Fpga->ph_scr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + LPH_SCR(p_PhoneId));
-    p_Fpga->ph_imr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + LPH_IER(p_PhoneId));
+    p_Fpga->ph_ssr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + PH_SSR_OFFSET);
+    p_Fpga->ph_scr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + PH_SCR_OFFSET);
+    p_Fpga->ph_imr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + PH_IMR_OFFSET);
 }
 
 
