@@ -162,8 +162,7 @@ tty_read(struct file *f, int timeout, unsigned char *string)
     oldfs = get_fs();
     set_fs(KERNEL_DS);
 
-    if (0)
-//    if (f->f_op->poll)
+    if (f->f_op->poll)
     {
       struct poll_wqueues table;
       struct timeval start, now;
