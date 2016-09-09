@@ -18,8 +18,11 @@
 #define SIM_DEV_BOARD
 #endif
 
-// Globals
-uint8_t * amp_mapped_address;
+// ----------------------------------------------------------------------------
+// Definitions
+// ----------------------------------------------------------------------------
+#define SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS   0x20
+#define SIMDRV_AMP_FPGA_UART_BASE_ADDRESS   0x30
 
 //
 // attach/detach phone/SIM
@@ -60,7 +63,7 @@ int amp_AttachDevice(int thePhoneId,
           // attach to SIM
           amp_iowrite8(thePhoneId, 0x80,p_Fpga->sim_rcon_csr);
           // recalculate SIM status register address
-          p_Fpga->sim_status = amp_mapped_address + SIM_STATUS(p_DeviceId);
+          p_Fpga->sim_status = SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS(p_DeviceId);
       break;
       case DEVTYPE_DIRECT:    // attach phone to SIM directly disconnec UART
           if ( p_DeviceId > 3 )
@@ -185,14 +188,14 @@ void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
     p_PhoneId = 0;
 
     // Precompute phone/UART control/SIM FPGA registers
-    p_Fpga->sim_status = amp_mapped_address + SIM_STATUS(p_PhoneId);
+    p_Fpga->sim_status = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS(p_PhoneId));
 
-    p_Fpga->sim_rcon_csr  = amp_mapped_address + RCON_SCR(p_PhoneId);
-    p_Fpga->sim_rcon_addr = amp_mapped_address + RCON_ADDR(p_PhoneId);
+    p_Fpga->sim_rcon_csr  = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + RCON_SCR(p_PhoneId));
+    p_Fpga->sim_rcon_addr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + RCON_ADDR(p_PhoneId));
 
-    p_Fpga->ph_ssr = amp_mapped_address + LPH_SSR(p_PhoneId);
-    p_Fpga->ph_scr = amp_mapped_address + LPH_SCR(p_PhoneId);
-    p_Fpga->ph_imr = amp_mapped_address + LPH_IER(p_PhoneId);
+    p_Fpga->ph_ssr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + LPH_SSR(p_PhoneId));
+    p_Fpga->ph_scr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + LPH_SCR(p_PhoneId));
+    p_Fpga->ph_imr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + LPH_IER(p_PhoneId));
 }
 
 
@@ -204,22 +207,24 @@ void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId)
     // Each AMP has its own phone so only ever phone 0 for amp
     p_PhoneId = 0;
 
-    // Precompute register addresses.
-    p_Uart->rbr = amp_mapped_address + UART_RHR(p_PhoneId);
-    p_Uart->ier = amp_mapped_address + UART_IER(p_PhoneId);
-    p_Uart->iir = amp_mapped_address + UART_IIR(p_PhoneId);
-    p_Uart->fcr = p_Uart->iir;
-    p_Uart->lcr = amp_mapped_address + UART_LCR(p_PhoneId);
-    p_Uart->lsr = amp_mapped_address + UART_LSR(p_PhoneId);
-    p_Uart->msr = amp_mapped_address + UART_MSR(p_PhoneId);
-    p_Uart->dll = amp_mapped_address + UART_DLLA(p_PhoneId);
-    p_Uart->dlh = amp_mapped_address + UART_DLHA(p_PhoneId);
-    p_Uart->spc = amp_mapped_address + UART_SPC(p_PhoneId);
+    // All UART registers offset by UART_BASE
 
-    p_Uart->t0ctr = amp_mapped_address + UART_T0_CTR(p_PhoneId);
-    p_Uart->rtl = amp_mapped_address + UART_RTL(p_PhoneId);
-    p_Uart->tfs = amp_mapped_address + UART_TFS(p_PhoneId);
-    p_Uart->tcd = amp_mapped_address + UART_TCD(p_PhoneId);
+    // Precompute register addresses.
+    p_Uart->rbr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_RHR(p_PhoneId) - UART_BASE);
+    p_Uart->ier = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_IER(p_PhoneId) - UART_BASE);
+    p_Uart->iir = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_IIR(p_PhoneId) - UART_BASE);
+    p_Uart->fcr = p_Uart->iir;
+    p_Uart->lcr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_LCR(p_PhoneId) - UART_BASE);
+    p_Uart->lsr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_LSR(p_PhoneId) - UART_BASE);
+    p_Uart->msr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_MSR(p_PhoneId) - UART_BASE);
+    p_Uart->dll = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_DLLA(p_PhoneId) - UART_BASE);
+    p_Uart->dlh = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_DLHA(p_PhoneId) - UART_BASE);
+    p_Uart->spc = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_SPC(p_PhoneId) - UART_BASE);
+
+    p_Uart->t0ctr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_T0_CTR(p_PhoneId) - UART_BASE);
+    p_Uart->rtl = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_RTL(p_PhoneId) - UART_BASE);
+    p_Uart->tfs = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_TFS(p_PhoneId) - UART_BASE);
+    p_Uart->tcd = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_TCD(p_PhoneId) - UART_BASE);
 }
 
 
@@ -410,9 +415,7 @@ amp_ioread8(
   char * myResponse = NULL;
   int ret = 0;
   long theResult;
-#ifndef SIM_DEV_BOARD
   char *myLeftoverPointer = 0;
-#endif
 
   // If buffer not primed...
   if (!myAddressPointer)
@@ -472,12 +475,37 @@ amp_ioread8(
   if (ret == 0)
   {
     // Pleace to look for response
-    // FPGA|GET|<address>|OK|value\n
+    // FPGA|GET|<address>|value|OK\n
     // -------------------^
     myResponse = myInsertionPointer;
 
     // If delimiter not present...
     if (*myResponse++ != RCTN_DELIM)
+    {
+      // Failed
+      ret = 1;
+    }
+
+    // If okay so far...
+    if (ret == 0)
+    {
+#ifdef SIM_DEV_BOARD
+      // Convert to value
+      ret = kstrtol(myResponse, 16, &theResult);
+
+      // Set leftover pointer
+      myLeftoverPointer = strchr(myResponse, '|');
+#else
+      // Convert to value
+      theResult = simple_strtoull(myResponse, &myLeftoverPointer, 16);
+#endif
+    }
+
+    // Advance response
+    myResponse = myLeftoverPointer;
+
+    // If delimiter not present...
+    if (myResponse && *myResponse++ != RCTN_DELIM)
     {
       // Failed
       ret = 1;
@@ -495,26 +523,11 @@ amp_ioread8(
         ret = 1;
       }
     }
-
-    // If okay so far...
-    if (ret == 0)
-    {
-#ifdef SIM_DEV_BOARD
-      // Convert to value
-      ret = kstrtol(myResponse, 16, &theResult);
-#else
-      // Convert to value
-      theResult = simple_strtoull(myResponse, &myLeftoverPointer, 16);
-#endif
-    }
   }
 
-  // If failed...
-  if (ret != 0)
-  {
-    // Log for now (already terminated)
-    printk(KERN_ALERT "simdrv: phonesim%d: failed %s", thePhoneId, myRequest);
-  }
+  // Log for now
+  printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)",
+         thePhoneId, myRequest, (ret == 0 ? "ok" : "fail"));
 
   // Return result
   return(ret == 0 ? theResult : 0);

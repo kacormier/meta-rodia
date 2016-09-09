@@ -336,13 +336,6 @@ typedef struct  FileStruct
 #define NUM_AMPS  0   // No support
 #endif
 
-#ifdef SIM_DEV_BOARD
-// Address map array
-//   dimension 0 - the address
-//   dimension 1 - the value
-int simdrv_amp_address_map[FPGA_REG_SIZE][2];
-#endif
-
 /*=======================GLOBAL VARIABLES==========================
  * Global Data (static not needed because EXPORT_NO_SYMBOLS is used)
  */
@@ -3723,10 +3716,6 @@ static int __init simdrv_init_module(void)
 #ifndef SIM_DEV_BOARD
     // Perform FPGA mapping
     fpga_mapped_address = ioport_map((unsigned long)FPGA_REG_BASE, (size_t)FPGA_REG_SIZE);
-    // Perform AMP mapping
-    amp_mapped_address = (char *) SIMDRV_AMP_FPGA_BASE_ADDRESS;
-#else
-    fpga_mapped_address = (char *) simdrv_amp_address_map;
 #endif
 
     // If mapped...
