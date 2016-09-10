@@ -11,6 +11,17 @@
 // 0, 1 or 2 in the current probes.
 
 //*****************************  INCLUDE FILES  ********************************
+
+#include <linux/version.h>
+
+// If new(er) kernel than Phoenix...
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
+// Enable dev board support
+#define SIM_DEV_BOARD
+#endif
+
+// If not development board...
+#ifndef SIM_DEV_BOARD
 #include "nonvol.h"
 #include "fpgaRegisterAccess.h"
 #include <cproject.h>
@@ -19,10 +30,23 @@
 #include "util.h"   // if XScale, RCATS util.h, else SIM Switch util.h
 #include "fpga_serial.h"
 #include "fpga_ph.h"
+#else
+#include "stubs.h"
+// #include "nonvol.h"
+#include "fpgaRegisterAccess.h"
+// #include <cproject.h>
+#include <sstream>         // uses ostringstream
+#include "fpga.h"
+// #include "util.h"   // if XScale, RCATS util.h, else SIM Switch util.h
+#include "fpga_serial.h"
+#include "fpga_ph.h"
+#endif
 
 #define DEBUG(_x_) {}
 
 using namespace std;
+
+
 
 // External:
 extern void phone_sim_assignment(unsigned char phone, char sim);
