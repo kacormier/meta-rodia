@@ -22,3 +22,10 @@ SRC_URI += "file://ampsup.h"
 SRC_URI += "file://rcats_msgs.h"
 SRC_URI += "file://usbsup.c"
 SRC_URI += "file://usbsup.h"
+
+do_install_append() {
+    # Copy simdrv.h to usr/include
+    install -d ${D}/usr/include
+    install -m 0755 ${S}/simdrv.h ${D}/usr/include/
+}
+

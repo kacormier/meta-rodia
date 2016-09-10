@@ -426,7 +426,7 @@ uint8_t dev_IsSimPresent(phoneSIMStruct *p_Dev);
 uint8_t dev_IsSimReady(phoneSIMStruct *p_Dev);
 uint8_t dev_IsPhonePresent(int p_PhoneId);
 unsigned int dev_ioread8(phoneSIMStruct *p_Dev, void *theAddress);
-void dev_iowrite8(phoneSIMStruct *p_Dev, uint8_t tjeValue, void *theAddress);
+void dev_iowrite8(phoneSIMStruct *p_Dev, uint8_t theValue, void *theAddress);
 
 /*==============================FUNCTIONS===============================
  */
@@ -1608,6 +1608,7 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
 #endif
 {
     int retval = 0;
+    AMP_Register    reg;
 //static int dbg_cnt = 0;
     FileStruct      *pFile = (FileStruct *)file->private_data;
     phoneSIMStruct  *pDev = pFile->m_pUartStruct;
@@ -1934,6 +1935,34 @@ if ( tmp > 50 )
                         return -EFAULT;
             }
                 break;
+
+      case SIMDRV_MEM_READ:
+        if ( copy_from_user(&reg, (AMP_Register *)arg, sizeof(AMP_Register)))
+            return -EFAULT;
+        else
+        {
+          // No visibility of failure
+            reg.res = dev_ioread8(pDev, &reg.addr);
+            retval = 0;
+        }
+        if ( retval == 0 )
+            if (copy_to_user((void*)arg, &reg, sizeof(reg)))
+                return -EFAULT;
+      break;
+
+      case SIMDRV_MEM_WRITE:
+        if ( copy_from_user(&reg, (AMP_Register *)arg, sizeof(AMP_Register)))
+            return -EFAULT;
+        else
+        {
+          // No visibility of failure
+            dev_iowrite8(pDev, reg.res, &reg.addr);
+            retval = 0;
+        }
+      break;
+
+
+
         default:
             retval = -ENOSYS;
             break;

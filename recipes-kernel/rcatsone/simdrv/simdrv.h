@@ -246,6 +246,14 @@ unsigned int    m_PayloadBytes;     // Actual Transfer Size
                                     // 1 - get payload from SIM
 }   SimPdu;
 
+/*
+ *	read/write structure
+ */
+typedef struct AMP_Register {
+	unsigned int	addr;
+  unsigned short  res;
+} AMP_Register;
+
 // definitions for Flags member
 #define BLOCK_INSERTED  (1 << 0)    /* Block until SIM Present is true */
 #define BLOCK_IR_EVENT  (1 << 1)    /* Block until any Insert/Remove Event  */
@@ -282,7 +290,9 @@ enum ioc_nr
     sim_power,
     sim_clock,
     sim_status,
-    response_negotiation_baud
+    response_negotiation_baud,
+    mem_read,
+    mem_write
     };
 
 #define SIMDRV_COMMAND      _IOWR(SIMDRV_IOC_MAGIC, command_nr, uint8_t)
@@ -313,6 +323,8 @@ enum ioc_nr
 #define TEQUAL0_CLOCK       _IO(SIMDRV_IOC_MAGIC,  sim_clock)               // Set SIM Clock to arg==0 -> off; arg!=0 -> on
 #define TEQUAL0_STATUS      _IOR(SIMDRV_IOC_MAGIC, sim_status, uint32_t)    // Fetch Status word from driver
 
+#define SIMDRV_MEM_READ    	_IOWR(SIMDRV_IOC_MAGIC, mem_read, AMP_Register)	 /* read memory */
+#define SIMDRV_MEM_WRITE   	_IOWR(SIMDRV_IOC_MAGIC, mem_write, AMP_Register)	 /* write memory*/
 
 // CMD AND EVENT BITs of Byte 0 of array returned for SIMDRV_COMMAND
 #define CMD_OR_PAYLOAD      (0)
