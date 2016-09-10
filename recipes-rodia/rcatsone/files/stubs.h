@@ -7,5 +7,5 @@ void fpga_enable_phone_interrupts(unsigned char ph, bool enable);
 #define ERROR_OK 0
 #define ddebug2(...)
 #define MAKE_RCATS_ERROR(...) 1
-#define NUM_SIM_SLOTS 1
-#define NUM_SIM_UARTS 1
+#define NUM_SIM_SLOTS 4
+#define NUM_SIM_UARTS 3
