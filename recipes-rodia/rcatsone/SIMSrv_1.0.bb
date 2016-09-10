@@ -8,6 +8,8 @@ SRC_URI += "file://fpgaRegisterAccess.h"
 SRC_URI += "file://fpga.h"
 SRC_URI += "file://fpga_serial.h"
 SRC_URI += "file://fpga_ph.h"
+SRC_URI += "file://vikdrv.h"
+SRC_URI += "file://cres.h"
 
 # Stubs
 SRC_URI += "file://stubs.h"

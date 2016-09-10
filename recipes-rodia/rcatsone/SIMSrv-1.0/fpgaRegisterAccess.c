@@ -3,6 +3,17 @@
  *  Copyright (c) 2015 RCATSOne Incorporated.  All rights reserved.
  *
  */
+
+#include <linux/version.h>
+
+// If new(er) kernel than Phoenix...
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
+// Enable dev board support
+#define SIM_DEV_BOARD
+#endif
+
+// If not development board...
+#ifndef SIM_DEV_BOARD
 #include <sys/ioctl.h>
 #include <fcntl.h>	// O_RDWR, O_NONBLOCK
 #include <errno.h>
@@ -11,6 +22,16 @@
 #include "cres.h"	// FPGA_POKE
 #include "util.h"	// error()
 #include "vikdrv.h"	// peek/poke ioctl params
+#else
+#include "stubs.h"
+#include <sys/ioctl.h>
+#include <fcntl.h>	// O_RDWR, O_NONBLOCK
+#include <errno.h>
+// #include "ks.h"		// KS comat includes
+#include "cres.h"	// FPGA_POKE
+// #include "util.h"	// error()
+#include "vikdrv.h"	// peek/poke ioctl params
+#endif
 
 static int fppfd = -1;  // FPGA Peek/Poke File Descriptor for examining and setting FPGA registers
 static RESOURCE fpga_poke = FPGA_POKE;  // lock poke of FPGA registers
@@ -33,7 +54,7 @@ int openFPGARegisterAccess(void)
 int peekFPGA(unsigned int addr, unsigned char *value)
 {
    CPU_Register   fpgaReg;
-   
+
    // hack: open the FPGA access file if it isn't already (openFPGA.. call is
    //  thread-safe).  This open call really belongs in the hardware init layer,
    //  but for some reason it is SIMClientStartup, which doesn't run on the
@@ -41,7 +62,7 @@ int peekFPGA(unsigned int addr, unsigned char *value)
    if (fppfd < 0)
       if (openFPGARegisterAccess() < 0)
          return -1;
-   
+
    fpgaReg.addr = addr;
    if (ioctl(fppfd, VIKDRV_MEM_READ, &fpgaReg) < 0)
    {
@@ -62,7 +83,7 @@ int pokeFPGA(unsigned int addr, unsigned char value)
    //  thread-safe).  This open call really belongs in the hardware init layer,
    //  but for some reason it is SIMClientStartup, which doesn't run on the
    //  CDMA probes.
-   // celder added 2007Feb13 bugfix #2706 - preload SIM command failed because 
+   // celder added 2007Feb13 bugfix #2706 - preload SIM command failed because
    //  openFPGARegisterAccess() has not yet been called.
    if (fppfd < 0)
       if (openFPGARegisterAccess() < 0)
@@ -86,7 +107,7 @@ int updateBitsFPGA(unsigned int addr, unsigned char bits, int setUnset)
    //  thread-safe).  This open call really belongs in the hardware init layer,
    //  but for some reason it is SIMClientStartup, which doesn't run on the
    //  CDMA probes.
-   // celder added 2007Feb13 bugfix #2706 - preload SIM command failed because 
+   // celder added 2007Feb13 bugfix #2706 - preload SIM command failed because
    //  openFPGARegisterAccess() has not yet been called.
    if (fppfd < 0)
       if (openFPGARegisterAccess() < 0)
