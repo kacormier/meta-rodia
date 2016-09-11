@@ -22,8 +22,12 @@
 #include "cres.h"	// FPGA_POKE
 #include "util.h"	// error()
 #include "vikdrv.h"	// peek/poke ioctl params
+#include <stdint.h>
+#include "fpga.h"
+#include "../../LinuxDrivers/phoenix/sim/simdrv.h"
 #else
 #include "stubs.h"
+#include <string.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>	// O_RDWR, O_NONBLOCK
 #include <errno.h>
@@ -31,11 +35,22 @@
 #include "cres.h"	// FPGA_POKE
 // #include "util.h"	// error()
 #include "vikdrv.h"	// peek/poke ioctl params
+#include <stdint.h>
+#include "fpga.h"
+#include "simdrv.h"	// peek/poke ioctl params
 #endif
 
 static int fppfd = -1;  // FPGA Peek/Poke File Descriptor for examining and setting FPGA registers
 static RESOURCE fpga_poke = FPGA_POKE;  // lock poke of FPGA registers
 					// would be more efficient to hava a lock for each register
+
+#define AMP_PHONE_MIN 5
+#define AMP_PHONE_MAX 7
+
+// AMP prototypes
+int peekAMP(unsigned int ph, unsigned int addr, unsigned char *value);
+int pokeAMP(unsigned int ph, unsigned int addr, unsigned char value);
+int updateBitsAMP(unsigned int ph, unsigned int addr, unsigned char bits, int setUnset);
 
 int openFPGARegisterAccess(void)
 {
@@ -51,9 +66,17 @@ int openFPGARegisterAccess(void)
 }
 
 
-int peekFPGA(unsigned int addr, unsigned char *value)
+int peekFPGA(unsigned int ph, unsigned int addr, unsigned char *value)
 {
    CPU_Register   fpgaReg;
+
+  // If AMP bound...
+  if (ph >= AMP_PHONE_MIN &&
+      ph <= AMP_PHONE_MAX)
+  {
+    // Do the work
+    return(peekAMP(ph, addr, value));
+  }
 
    // hack: open the FPGA access file if it isn't already (openFPGA.. call is
    //  thread-safe).  This open call really belongs in the hardware init layer,
@@ -66,7 +89,9 @@ int peekFPGA(unsigned int addr, unsigned char *value)
    fpgaReg.addr = addr;
    if (ioctl(fppfd, VIKDRV_MEM_READ, &fpgaReg) < 0)
    {
-      error(eWARN, "Cannot peek FPGA register %x: errno %i", addr, errno);
+      error(eWARN,
+            "Cannot peek FPGA probe (ph %d) register %x: errno %i",
+            ph, addr, errno);
       return -1;
    }
    *value = fpgaReg.res;
@@ -74,10 +99,23 @@ int peekFPGA(unsigned int addr, unsigned char *value)
 }
 
 
-int pokeFPGA(unsigned int addr, unsigned char value)
+int pokeFPGA(unsigned int ph, unsigned int addr, unsigned char value)
 {
 	CPU_Register	fpgaReg;
 	int		rtnVal;
+
+      error(eWARN,
+            "Poke FPGA probe (ph %d) register %x: errno %i",
+            ph, addr, errno);
+
+
+  // If AMP bound...
+  if (ph >= AMP_PHONE_MIN &&
+      ph <= AMP_PHONE_MAX)
+  {
+    // Do the work
+    return(pokeAMP(ph, addr, value));
+  }
 
    // hack: open the FPGA access file if it isn't already (openFPGA.. call is
    //  thread-safe).  This open call really belongs in the hardware init layer,
@@ -93,15 +131,25 @@ int pokeFPGA(unsigned int addr, unsigned char value)
 	fpgaReg.res = value;
 	KS_lockw(fpga_poke);
 	if ((rtnVal = ioctl(fppfd, VIKDRV_MEM_WRITE, &fpgaReg)) < 0)
-		error(eWARN, "Cannot poke FPGA register %x: errno %i", addr, errno);
+      error(eWARN,
+            "Cannot poke FPGA probe (ph %d) register %x: errno %i",
+            ph, addr, errno);
 	KS_unlock(fpga_poke);
 	return rtnVal;
 }
 
-int updateBitsFPGA(unsigned int addr, unsigned char bits, int setUnset)
+int updateBitsFPGA(unsigned int ph, unsigned int addr, unsigned char bits, int setUnset)
 {
 	CPU_Register	fpgaReg;
 	int rtnVal;
+
+  // If AMP bound...
+  if (ph >= AMP_PHONE_MIN &&
+      ph <= AMP_PHONE_MAX)
+  {
+    // Do the work
+    return(updateBitsAMP(ph, addr, bits, setUnset));
+  }
 
    // hack: open the FPGA access file if it isn't already (openFPGA.. call is
    //  thread-safe).  This open call really belongs in the hardware init layer,
@@ -121,9 +169,180 @@ int updateBitsFPGA(unsigned int addr, unsigned char bits, int setUnset)
 		else
 			fpgaReg.res &= ~bits;
 		if ((rtnVal = ioctl(fppfd, VIKDRV_MEM_WRITE, &fpgaReg)) < 0)
-			error(eWARN, "Cannot poke FPGA register %x: errno %i", addr, errno);
+      error(eWARN,
+            "Cannot poke FPGA probe (ph %d) register %x: errno %i",
+            ph, addr, errno);
 	} else
-		error(eWARN, "Cannot peek FPGA register %x: errno %i", addr, errno);
+      error(eWARN,
+            "Cannot peek FPGA probe (ph %d) register %x: errno %i",
+            ph, addr, errno);
 	KS_unlock(fpga_poke);
 	return rtnVal;
+}
+
+
+int
+openAMPRegisterAccess(
+  unsigned int ph)
+{
+  // Locals
+  char devname[20];
+  int simdrvFd = -1;
+
+  // Lock
+  KS_lockw(fpga_poke);
+
+  // Format device name
+  snprintf(&devname, sizeof(devname), "/dev/simphone%d", ph);
+
+  // Access
+  simdrvFd = open(devname, O_RDWR | O_NONBLOCK);
+
+  // If failed to open...
+  if (simdrvFd < 0)
+  {
+    // Log
+    error(eFATAL, "Cannot open AMP peek/poke device %s: errno %i",
+          devname, errno);
+  }
+
+  // Unlock
+  KS_unlock(fpga_poke);
+
+  // Return result
+  return(simdrvFd);
+}
+
+int
+peekAMP(
+  unsigned int ph,
+  unsigned int addr,
+  unsigned char *value)
+{
+  AMP_Register fpgaReg;
+  int simdrvFd = -1;
+  int ret = 0;
+
+  // Open access
+  simdrvFd = openAMPRegisterAccess(ph);
+
+  // If failed...
+  if (simdrvFd < 0)
+    return -1;
+
+  // Configure
+  fpgaReg.addr = addr;
+
+  // Disatch
+  if (ioctl(simdrvFd, SIMDRV_MEM_READ, &fpgaReg) < 0)
+  {
+    // Failed
+    error(eWARN,
+          "Cannot peek FPGA AMP (ph %d) register %x: errno %i",
+          ph, addr, errno);
+    ret = -1;
+  }
+
+  // Set value
+  *value = fpgaReg.res;
+
+   // Close
+   close(simdrvFd);
+
+   // Return result
+   return(ret);
+}
+
+int
+pokeAMP(
+  unsigned int ph,
+  unsigned int addr,
+  unsigned char value)
+{
+  AMP_Register fpgaReg;
+  int simdrvFd = -1;
+  int ret = 0;
+
+  // Open access
+  simdrvFd = openAMPRegisterAccess(ph);
+
+  // If failed...
+  if (simdrvFd < 0)
+    return -1;
+
+  // Configure
+	fpgaReg.addr = addr;
+	fpgaReg.res = value;
+
+  // Lock
+	KS_lockw(fpga_poke);
+
+  // Disatch
+  if (ioctl(simdrvFd, SIMDRV_MEM_WRITE, &fpgaReg) < 0)
+  {
+    // Failed
+    error(eWARN,
+          "Cannot poke FPGA AMP (ph %d) register %x: errno %i",
+          ph, addr, errno);
+    ret = -1;
+  }
+
+  // Unlock
+	KS_unlock(fpga_poke);
+
+ // Close
+ close(simdrvFd);
+
+ // Return result
+ return(ret);
+}
+
+int
+updateBitsAMP(
+  unsigned int ph,
+  unsigned int addr,
+  unsigned char bits,
+  int setUnset)
+{
+  AMP_Register fpgaReg;
+  int simdrvFd = -1;
+  int ret = 0;
+
+  // Open access
+  simdrvFd = openAMPRegisterAccess(ph);
+
+  // If failed...
+  if (simdrvFd < 0)
+    return -1;
+
+  // Configure
+	fpgaReg.addr = addr;
+
+  // Lock
+	KS_lockw(fpga_poke);
+
+	if ((ret = ioctl(simdrvFd, SIMDRV_MEM_READ, &fpgaReg)) == 0) {
+		if (setUnset)
+			fpgaReg.res |= bits;
+		else
+			fpgaReg.res &= ~bits;
+		if ((ret = ioctl(simdrvFd, SIMDRV_MEM_WRITE, &fpgaReg)) < 0)
+      // Failed
+      error(eWARN,
+            "Cannot poke FPGA AMP (ph %d) register %x: errno %i",
+            ph, addr, errno);
+	} else
+    // Failed
+    error(eWARN,
+          "Cannot peek FPGA AMP (ph %d) register %x: errno %i",
+          ph, addr, errno);
+
+  // Unlock
+	KS_unlock(fpga_poke);
+
+ // Close
+ close(simdrvFd);
+
+ // Return result
+ return(ret);
 }

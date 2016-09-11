@@ -8,9 +8,9 @@ extern "C" {
 #endif
 
 int openFPGARegisterAccess(void);
-int peekFPGA(unsigned int addr, unsigned char *value);
-int pokeFPGA(unsigned int addr, unsigned char value);
-int updateBitsFPGA(unsigned int addr, unsigned char bits, int setUnset);
+int peekFPGA(unsigned int ph, unsigned int addr, unsigned char *value);
+int pokeFPGA(unsigned int ph, unsigned int addr, unsigned char value);
+int updateBitsFPGA(unsigned int ph, unsigned int addr, unsigned char bits, int setUnset);
 
 #ifdef __cplusplus
 }

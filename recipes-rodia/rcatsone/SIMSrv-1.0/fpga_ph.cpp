@@ -65,6 +65,7 @@ const struct sim_control sim_control_struct[NUM_T0_PORTS] =
 //*****************************  FPGA_BLD_NUM  *********************************
 int fpga_bld_num(long *bldnum)
 {
+#if 0
    unsigned char msb, lsb;
 
    // Initialize the return data to a default value.
@@ -83,14 +84,15 @@ int fpga_bld_num(long *bldnum)
    peekFPGA(FPGA_BUILDM, &msb);
    peekFPGA(FPGA_BUILDL, &lsb);
    *bldnum = (msb<<8) | lsb;
+#endif
    return 0;
 }
 
 void map_uart(unsigned char ph, char sim)
 {
-   updateBitsFPGA(sim_control_struct[ph].remote_connection_status_control_register, FPGA_RC_SCR_CLK_EN, 0);
-   pokeFPGA(sim_control_struct[ph].remote_connection_adr_register, sim | FPGA_PH_SIM_ENABLE);
-   updateBitsFPGA(sim_control_struct[ph].remote_connection_status_control_register, FPGA_RC_SCR_CLK_EN, 1);
+   updateBitsFPGA(ph, sim_control_struct[ph].remote_connection_status_control_register, FPGA_RC_SCR_CLK_EN, 0);
+   pokeFPGA(ph, sim_control_struct[ph].remote_connection_adr_register, sim | FPGA_PH_SIM_ENABLE);
+   updateBitsFPGA(ph, sim_control_struct[ph].remote_connection_status_control_register, FPGA_RC_SCR_CLK_EN, 1);
 }
 
 
@@ -116,8 +118,8 @@ ResultCode fpga_map_phone_sim(unsigned char ph, char sim)
    // in all cases we disconnect first
    fpga_enable_phone_interrupts(ph, false);           // disable phone interrupts
    fpga_phone_sim_present(ph, FALSE);                   // de-assert SIM present line
-   pokeFPGA(sim_control_struct[ph].sim_selection_register, 0);      // disable local SIM selection
-   pokeFPGA(sim_control_struct[ph].remote_connection_adr_register, 0);  // map UART to nothing
+   pokeFPGA(ph, sim_control_struct[ph].sim_selection_register, 0);      // disable local SIM selection
+   pokeFPGA(ph, sim_control_struct[ph].remote_connection_adr_register, 0);  // map UART to nothing
 
    if (sim != 0) // going to connect either a SIM or a UART
    {
@@ -126,7 +128,7 @@ ResultCode fpga_map_phone_sim(unsigned char ph, char sim)
       KS_delay(SELFTASK, 20/CLKTICK);
 
       if (sim > 0) { // connect to a SIM slot
-         pokeFPGA(sim_control_struct[ph].sim_selection_register, (sim-1) | FPGA_PH_SIM_ENABLE);
+         pokeFPGA(ph, sim_control_struct[ph].sim_selection_register, (sim-1) | FPGA_PH_SIM_ENABLE);
          fpga_phone_sim_present(ph, TRUE);
       } else // connect to a UART
       {
@@ -147,6 +149,6 @@ ResultCode fpga_map_phone_sim(unsigned char ph, char sim)
 char fpga_phone_sim_present(char ph, char enable)
 {
    ddebug2(DBG2_SIM_SIMU, ("SIM Link Slot %d: %s SIM present", ph, enable ? "set" : "unset"));
-   return (char)updateBitsFPGA(sim_control_struct[(int)ph].phone_status_control_register, FPGA_LPH_SCR_SIM_PRESENT, (int)enable);
+   return (char)updateBitsFPGA((int)ph, sim_control_struct[(int)ph].phone_status_control_register, FPGA_LPH_SCR_SIM_PRESENT, (int)enable);
 }
 
