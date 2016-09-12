@@ -1942,8 +1942,13 @@ if ( tmp > 50 )
         else
         {
           // No visibility of failure
-            reg.res = dev_ioread8(pDev, &reg.addr);
-            retval = 0;
+          reg.res = dev_ioread8(pDev, &reg.addr);
+          retval = 0;
+
+          // Log insertion change
+          printk(KERN_ALERT
+                 "simdrv: phonesim%d: SIMDRV_MEM_READ (addr 0x%x val 0x%x)\n",
+                 pDev->m_PhoneId, reg.addr, reg.res);
         }
         if ( retval == 0 )
             if (copy_to_user((void*)arg, &reg, sizeof(reg)))
@@ -1956,8 +1961,13 @@ if ( tmp > 50 )
         else
         {
           // No visibility of failure
-            dev_iowrite8(pDev, reg.res, &reg.addr);
-            retval = 0;
+          dev_iowrite8(pDev, reg.res, &reg.addr);
+          retval = 0;
+
+          // Log insertion change
+          printk(KERN_ALERT
+                 "simdrv: phonesim%d: SIMDRV_MEM_WRITE (addr 0x%x val 0x%x)\n",
+                 pDev->m_PhoneId, reg.addr, reg.res);
         }
       break;
 
