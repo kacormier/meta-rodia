@@ -27,6 +27,7 @@
 #include <cproject.h>
 #include <sstream>         // uses ostringstream
 #include "fpga.h"
+#include "fpga_amp.h"
 #include "util.h"   // if XScale, RCATS util.h, else SIM Switch util.h
 #include "fpga_serial.h"
 #include "fpga_ph.h"
@@ -37,6 +38,7 @@
 // #include <cproject.h>
 #include <sstream>         // uses ostringstream
 #include "fpga.h"
+#include "fpga_amp.h"
 // #include "util.h"   // if XScale, RCATS util.h, else SIM Switch util.h
 #include "fpga_serial.h"
 #include "fpga_ph.h"
@@ -46,20 +48,20 @@
 
 using namespace std;
 
-
-
 // External:
 extern void phone_sim_assignment(unsigned char phone, char sim);
 
-
-
-
 //***************************  GLOBAL VARIABLES  *******************************
-const struct sim_control sim_control_struct[NUM_T0_PORTS] =
+const struct sim_control sim_control_struct[NUM_T0_PORTS + (3 * NUM_AMP_PHONES)] =
 {
+  // Probe support
    { FPGA_LPH0_SIM, FPGA_LPH0_SCR, FPGA_LPH0_EVENT_IER, FPGA_RC0_ADR, FPGA_RC0_SCR },
    { FPGA_LPH1_SIM, FPGA_LPH1_SCR, FPGA_LPH1_EVENT_IER, FPGA_RC1_ADR, FPGA_RC1_SCR },
-   { FPGA_LPH2_SIM, FPGA_LPH2_SCR, FPGA_LPH2_EVENT_IER, FPGA_RC2_ADR, FPGA_RC2_SCR }
+   { FPGA_LPH2_SIM, FPGA_LPH2_SCR, FPGA_LPH2_EVENT_IER, FPGA_RC2_ADR, FPGA_RC2_SCR },
+  // AMP support
+   { FPGA_AMP_PH_SIM, FPGA_AMP_PH_SCR, FPGA_AMP_PH_EVENT_IER, FPGA_AMP_RCON_ADR, FPGA_AMP_RCON_SCR },  
+   { FPGA_AMP_PH_SIM, FPGA_AMP_PH_SCR, FPGA_AMP_PH_EVENT_IER, FPGA_AMP_RCON_ADR, FPGA_AMP_RCON_SCR },  
+   { FPGA_AMP_PH_SIM, FPGA_AMP_PH_SCR, FPGA_AMP_PH_EVENT_IER, FPGA_AMP_RCON_ADR, FPGA_AMP_RCON_SCR },        
 };
 
 //*****************************  FPGA_BLD_NUM  *********************************

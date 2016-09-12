@@ -44,6 +44,6 @@ char fpga_phone_sim_present(char ph, char enable);
 //********************************  MACROS  ************************************
 
 // shared control structure (what does this do?)
-extern const struct sim_control sim_control_struct[NUM_T0_PORTS];
+extern const struct sim_control sim_control_struct[];
 
 #endif      // #ifndef CASA_FPGA_PH_H__
