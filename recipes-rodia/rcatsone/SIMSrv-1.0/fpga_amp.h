@@ -1009,8 +1009,9 @@
 //
 //For more information on the UART registers, refer to the 16450 data sheet.
 
-#define NUM_AMP_PHONES      NUM_AMP_T0_PORTS
+#define NUM_AMP_PHONE       NUM_AMP_T0_PORTS
 #define NUM_AMP_SIM_UARTS   NUM_AMP_T0_PORTS
+#define NUM_AMP_PHONES      (3 * NUM_AMP_PHONE)
 
 #define FPGA_AMP_REG_BASE           (0x00)
 

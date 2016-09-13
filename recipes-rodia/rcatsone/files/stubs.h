@@ -4,6 +4,7 @@
 #define TRUE 1
 #define FALSE 0
 #define ERROR_OK 0
+#define debug(...)
 #define ddebug2(...)
 #define MAKE_RCATS_ERROR(...) 1
 #define NUM_SIM_SLOTS 4

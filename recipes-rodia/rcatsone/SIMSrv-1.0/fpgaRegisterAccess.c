@@ -25,6 +25,7 @@
 #include <stdint.h>
 #include "fpga.h"
 #include "../../LinuxDrivers/phoenix/sim/simdrv.h"
+#include "fpgaRegisterAccess.h"
 #else
 #include "stubs.h"
 #include <string.h>
@@ -38,14 +39,12 @@
 #include <stdint.h>
 #include "fpga.h"
 #include "simdrv.h"	// peek/poke ioctl params
+#include "fpgaRegisterAccess.h"
 #endif
 
 static int fppfd = -1;  // FPGA Peek/Poke File Descriptor for examining and setting FPGA registers
 static RESOURCE fpga_poke = FPGA_POKE;  // lock poke of FPGA registers
 					// would be more efficient to hava a lock for each register
-
-#define AMP_PHONE_MIN 5
-#define AMP_PHONE_MAX 7
 
 // AMP prototypes
 int peekAMP(unsigned int ph, unsigned int addr, unsigned char *value);
@@ -103,11 +102,6 @@ int pokeFPGA(unsigned int ph, unsigned int addr, unsigned char value)
 {
 	CPU_Register	fpgaReg;
 	int		rtnVal;
-
-      error(eWARN,
-            "Poke FPGA probe (ph %d) register %x: errno %i",
-            ph, addr, errno);
-
 
   // If AMP bound...
   if (ph >= AMP_PHONE_MIN &&

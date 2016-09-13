@@ -52,7 +52,7 @@ using namespace std;
 extern void phone_sim_assignment(unsigned char phone, char sim);
 
 //***************************  GLOBAL VARIABLES  *******************************
-const struct sim_control sim_control_struct[NUM_T0_PORTS + (3 * NUM_AMP_PHONES)] =
+const struct sim_control sim_control_struct[] =
 {
   // Probe support
    { FPGA_LPH0_SIM, FPGA_LPH0_SCR, FPGA_LPH0_EVENT_IER, FPGA_RC0_ADR, FPGA_RC0_SCR },
@@ -100,8 +100,11 @@ void map_uart(unsigned char ph, char sim)
 
 ResultCode fpga_map_phone_sim(unsigned char ph, char sim)
 {
+    // AMP-based instance?
+    int isAmp = (ph >= AMP_PHONE_MIN && ph <= AMP_PHONE_MAX);
+    
    // verify the parameters
-   if (ph >= NUM_PHONES)
+   if (ph >= NUM_PHONES + NUM_AMP_PHONES)
    {
       ostringstream ostr;
       ostr << "invalid SIM link slot parameter " << int(ph);
@@ -115,11 +118,12 @@ ResultCode fpga_map_phone_sim(unsigned char ph, char sim)
    }
 
    // note assignment of sim to phone in PhoneSession structure
-   phone_sim_assignment(ph, sim);
+   phone_sim_assignment((isAmp ? (ph - 3) : ph), sim);
 
    // in all cases we disconnect first
    fpga_enable_phone_interrupts(ph, false);           // disable phone interrupts
    fpga_phone_sim_present(ph, FALSE);                   // de-assert SIM present line
+   
    pokeFPGA(ph, sim_control_struct[ph].sim_selection_register, 0);      // disable local SIM selection
    pokeFPGA(ph, sim_control_struct[ph].remote_connection_adr_register, 0);  // map UART to nothing
 
@@ -149,7 +153,7 @@ ResultCode fpga_map_phone_sim(unsigned char ph, char sim)
 //
 
 char fpga_phone_sim_present(char ph, char enable)
-{
+{  
    ddebug2(DBG2_SIM_SIMU, ("SIM Link Slot %d: %s SIM present", ph, enable ? "set" : "unset"));
    return (char)updateBitsFPGA((int)ph, sim_control_struct[(int)ph].phone_status_control_register, FPGA_LPH_SCR_SIM_PRESENT, (int)enable);
 }

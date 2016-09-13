@@ -8,7 +8,18 @@
 // FPGA_Ph.h
 //
 
-// #include "ResultCode.h"
+#include <linux/version.h>
+
+// If new(er) kernel than Phoenix...
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,7,0) /* not > 2.6, by now */
+// Enable dev board support
+#define SIM_DEV_BOARD
+#endif
+
+// If not development board...
+#ifndef SIM_DEV_BOARD
+#include "ResultCode.h"
+#endif
 #include "fpga.h"
 
 #define VER_TEST_MSB_CODE   0x01
