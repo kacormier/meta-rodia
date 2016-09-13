@@ -1608,7 +1608,7 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
 #endif
 {
     int retval = 0;
-    AMP_Register    reg;
+
 //static int dbg_cnt = 0;
     FileStruct      *pFile = (FileStruct *)file->private_data;
     phoneSIMStruct  *pDev = pFile->m_pUartStruct;
@@ -1937,12 +1937,14 @@ if ( tmp > 50 )
                 break;
 
       case SIMDRV_MEM_READ:
+      {
+        AMP_Register    reg;
         if ( copy_from_user(&reg, (AMP_Register *)arg, sizeof(AMP_Register)))
             return -EFAULT;
         else
         {
           // No visibility of failure
-          reg.res = dev_ioread8(pDev, &reg.addr);
+          reg.res = dev_ioread8(pDev, reg.addr);
           retval = 0;
 
           // Log insertion change
@@ -1953,15 +1955,19 @@ if ( tmp > 50 )
         if ( retval == 0 )
             if (copy_to_user((void*)arg, &reg, sizeof(reg)))
                 return -EFAULT;
+      }
       break;
 
       case SIMDRV_MEM_WRITE:
+      {
+        AMP_Register    reg;
+            
         if ( copy_from_user(&reg, (AMP_Register *)arg, sizeof(AMP_Register)))
             return -EFAULT;
         else
         {
           // No visibility of failure
-          dev_iowrite8(pDev, reg.res, &reg.addr);
+          dev_iowrite8(pDev, reg.res, reg.addr);
           retval = 0;
 
           // Log insertion change
@@ -1969,6 +1975,7 @@ if ( tmp > 50 )
                  "simdrv: phonesim%d: SIMDRV_MEM_WRITE (addr 0x%x val 0x%x)\n",
                  pDev->m_PhoneId, reg.addr, reg.res);
         }
+      }
       break;
 
 
