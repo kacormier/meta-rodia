@@ -515,7 +515,7 @@ void dev_GetFpgaRegisters(phoneSIMStruct *theDevice,
                           int p_PhoneId)
 {
   // If probe...
-  if (theDevice->m_PhoneId < NUM_PHONES)
+  if (p_PhoneId < NUM_PHONES)
     fpga_GetFpgaRegisters(&theDevice->m_Fpga, p_PhoneId);
   else
     amp_GetFpgaRegisters(&theDevice->m_Fpga, p_PhoneId);
@@ -525,7 +525,7 @@ void dev_GetUartRegisters(phoneSIMStruct *theDevice,
                           int p_PhoneId)
 {
   // If probe...
-  if (theDevice->m_PhoneId < NUM_PHONES)
+  if (p_PhoneId < NUM_PHONES)
     fpga_GetUartRegisters(&theDevice->m_Uart, p_PhoneId);
   else
     amp_GetUartRegisters(&theDevice->m_Uart, p_PhoneId);
@@ -1423,6 +1423,44 @@ static unsigned int simdrv_poll(struct file * file, struct poll_table_struct * p
 
     return nRetval;
 }
+
+//
+//
+//
+static int 
+simdrv_UartEnable(
+  phoneSIMStruct *pDev,
+  struct file * file)
+{
+  if (file->f_mode & FMODE_READ)
+      pDev->m_RxStatus = SIM_IO_ACTIVE;
+  if (file->f_mode & FMODE_WRITE)
+  {
+      pDev->m_TxStatus = SIM_IO_ACTIVE;
+      // reset Tx subsystem
+      pDev->m_TxBuffer.m_nTxPtr = sizeof(pDev->m_TxBuffer.m_Buffer);
+      pDev->m_TxBuffer.m_DataType = TX_COMMAND;
+  }
+  pDev->m_T0Mode   = T0_WAIT_COMMAND;
+  pDev->m_SendNull = SIMCONFIG_SEND_NULL;
+
+  pDev->m_NeedsReset = 1;
+  
+  dev_iowrite8(pDev, 1, pDev->m_Uart.t0ctr);  // clear UART Rx/Tx error counter
+  dev_iowrite8(pDev, 1, pDev->m_Uart.tcd);    // set UART Tx inter-character delay (G20 needs it to be at least 1)
+  
+  // configure UART to default configuration - at that point interrupts are disabled
+  simdrv_UartConfig(pDev, &pDev->m_DefaultUartConfig);
+
+  MOD_INC_USE_COUNT;  /* Before we maybe sleep */
+  // enable interrupts - in special ioctl
+  simdrv_isr_rx_enable(pDev);
+
+  dev_PowerSim(pDev, STATE_OFF);        // power off the SIM
+
+  return 0;
+}
+
 //
 //
 //
@@ -1470,30 +1508,63 @@ static int simdrv_open(struct inode * inode, struct file * file)
         pDev->m_ExclusiveFlag  = EXCLUSIVE_ACCESS_OFF;          // regular file
     }
 
-    if (file->f_mode & FMODE_READ)
-        pDev->m_RxStatus = SIM_IO_ACTIVE;
-    if (file->f_mode & FMODE_WRITE)
-    {
-        pDev->m_TxStatus = SIM_IO_ACTIVE;
-        // reset Tx subsystem
-        pDev->m_TxBuffer.m_nTxPtr = sizeof(pDev->m_TxBuffer.m_Buffer);
-        pDev->m_TxBuffer.m_DataType = TX_COMMAND;
-    }
-    pDev->m_T0Mode   = T0_WAIT_COMMAND;
-    pDev->m_SendNull = SIMCONFIG_SEND_NULL;
+    return(0);
+}
 
-    pDev->m_NeedsReset = 1;
+//
+//
+//
+static int 
+simdrv_UartDisable(
+  phoneSIMStruct *pDev,
+  struct file * file)
+{
+  FileStruct      *pFile = (FileStruct *)file->private_data;
+    
+  // stop scheduled timer
+  del_timer_sync(&pDev->m_SendNullTimer);
 
-    // configure UART to default configuration - at that point interrupts are disabled
-    simdrv_UartConfig(pDev, &pDev->m_DefaultUartConfig);
+  mdelay(2);  // 1.3 character-times to allow quesence
 
-    MOD_INC_USE_COUNT;  /* Before we maybe sleep */
-    // enable interrupts - in special ioctl
-    simdrv_isr_rx_enable(pDev);
+  // disable interrupts
+  simdrv_isr_all_disable(pDev);
 
-    dev_PowerSim(pDev, STATE_OFF);        // power off the SIM
+  mdelay(2);  // 1.3 character-times to allow quesence
+  //
+  // Stop transmit operation if any runs
+  if (file->f_mode & FMODE_READ)
+  {
+      pDev->m_RxStatus = SIM_IO_STOP;
+      atomic_set(&pDev->m_EventCnt, 0);
+      cb_ClearBuffer(&pDev->m_RxBuffer);
+      cb_ClearBuffer(&pDev->m_IoctlBuffer);
+  }
+  if (file->f_mode & FMODE_WRITE)
+  {
+      // wake up transmitting "thread" and stop current
+      // transmittion as well as all waiting transmittions
+      pDev->m_TxStatus = SIM_IO_STOP;
+      // reset Tx subsystem
+      if ( pDev->m_TxBuffer.m_nTxPtr < sizeof(pDev->m_TxBuffer.m_Buffer))
+          up (&pDev->m_TxBuffer.m_TxSemaphore);
+      pDev->m_TxBuffer.m_nTxPtr = sizeof(pDev->m_TxBuffer.m_Buffer);
+      pDev->m_TxBuffer.m_DataType = TX_COMMAND;
+  }
 
-    return 0;
+  MOD_DEC_USE_COUNT;
+
+  // switch off copying events from another phone
+  if ( pDev->m_EventSrc != -1 )
+      phoneSIMData[pDev->m_EventSrc].m_PhoneForCopyEvents = NULL;
+
+  if ( pFile->m_ExclusiveAccess == EXCLUSIVE_ACCESS_ON )
+      pDev->m_ExclusiveFlag  = EXCLUSIVE_ACCESS_OFF;       // unlock files on this UAR
+
+  dev_PowerSim(pDev, STATE_OFF);        // power off the SIM
+
+  dev_AttachDevice(pDev, DEVTYPE_NODEVICE, DEVTYPE_NODEVICE);
+
+  return 0;
 }
 
 static int simdrv_release(struct inode * inode, struct file * file)
@@ -1501,52 +1572,9 @@ static int simdrv_release(struct inode * inode, struct file * file)
     FileStruct      *pFile = (FileStruct *)file->private_data;
     phoneSIMStruct  *pDev = pFile->m_pUartStruct;
 
-    // stop scheduled timer
-    del_timer_sync(&pDev->m_SendNullTimer);
-
-    mdelay(2);  // 1.3 character-times to allow quesence
-
-    // disable interrupts
-    simdrv_isr_all_disable(pDev);
-
-    mdelay(2);  // 1.3 character-times to allow quesence
-    //
-    // Stop transmit operation if any runs
-    if (file->f_mode & FMODE_READ)
-    {
-        pDev->m_RxStatus = SIM_IO_STOP;
-        atomic_set(&pDev->m_EventCnt, 0);
-        cb_ClearBuffer(&pDev->m_RxBuffer);
-        cb_ClearBuffer(&pDev->m_IoctlBuffer);
-    }
-    if (file->f_mode & FMODE_WRITE)
-    {
-        // wake up transmitting "thread" and stop current
-        // transmittion as well as all waiting transmittions
-        pDev->m_TxStatus = SIM_IO_STOP;
-        // reset Tx subsystem
-        if ( pDev->m_TxBuffer.m_nTxPtr < sizeof(pDev->m_TxBuffer.m_Buffer))
-            up (&pDev->m_TxBuffer.m_TxSemaphore);
-        pDev->m_TxBuffer.m_nTxPtr = sizeof(pDev->m_TxBuffer.m_Buffer);
-        pDev->m_TxBuffer.m_DataType = TX_COMMAND;
-    }
-
-    MOD_DEC_USE_COUNT;
-
-    // switch off copying events from another phone
-    if ( pDev->m_EventSrc != -1 )
-        phoneSIMData[pDev->m_EventSrc].m_PhoneForCopyEvents = NULL;
-
-    if ( pFile->m_ExclusiveAccess == EXCLUSIVE_ACCESS_ON )
-        pDev->m_ExclusiveFlag  = EXCLUSIVE_ACCESS_OFF;       // unlock files on this UAR
-
-    dev_PowerSim(pDev, STATE_OFF);        // power off the SIM
-
     // free file structure allocated in the open
     kfree((void*)pFile);
     file->private_data = NULL;
-
-    dev_AttachDevice(pDev, DEVTYPE_NODEVICE, DEVTYPE_NODEVICE);
 
     return 0;
 }
@@ -1715,6 +1743,7 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
         case SIMDRV_ATR_FULL:
             {
             uint8_t ATRhistSz;
+                            
             if ((retval = get_user(ATRhistSz, (uint8_t *)arg)) == 0) {
                 if (ATRhistSz > ATR_BUFFER_SIZE) {
                     retval = -E2BIG;
@@ -1722,6 +1751,11 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
                 }
                 __copy_from_user((pDev->ATRptr),(uint8_t *)(arg+1),(unsigned long)ATRhistSz);
                 pDev->ATRsize = ATRhistSz;
+                
+              // Log insertion change
+              printk(KERN_ALERT
+                   "simdrv: phonesim%d: SIMDRV_ATR_FULL (ATRsize %d)\n",
+                   pDev->m_PhoneId, pDev->ATRsize);                
             }
             }
             break;
@@ -1813,9 +1847,15 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
         case SIMDRV_ENABLE:
             {
                 retval = 0;
-                //retval = simdrv_UartEnable(arg, file);
+                retval = simdrv_UartEnable(pDev, file);
             }
             break;
+        case SIMDRV_DISABLE:
+            {
+                retval = 0;
+                retval = simdrv_UartDisable(pDev, file);
+            }
+            break;            
 
             case SIMDRV_COPY_EVENTS:
             {
@@ -1875,6 +1915,11 @@ if ( tmp > 50 )
                     retval = -EFAULT;
                 else
                 {
+                    // Log
+                    printk(KERN_ALERT
+                           "simdrv: phonesim%d: TEQUAL0_INSERT\n",
+                           pDev->m_PhoneId);
+                 
                     retval = simdrv_Insert(pDev, &insert);
                     if ( copy_to_user((void*)arg, &insert, sizeof(struct SimInsert)) )
                         return -EFAULT;
@@ -1886,6 +1931,11 @@ if ( tmp > 50 )
                 struct SimAtr            atr;
                 // Synch with semaphore ?????
 
+                // Log
+                printk(KERN_ALERT
+                       "simdrv: phonesim%d: TEQUAL0_RESET\n",
+                       pDev->m_PhoneId);
+                           
                 retval = simdrv_ResetSim(pDev, &atr);
                 if ( copy_to_user((void*)arg, &atr, sizeof(struct SimAtr)) )
                     return -EFAULT;
@@ -1899,6 +1949,11 @@ if ( tmp > 50 )
                     retval = -EFAULT;
                 else
                 {
+                    // Log
+                    printk(KERN_ALERT
+                           "simdrv: phonesim%d: TEQUAL0_TRANSACT\n",
+                           pDev->m_PhoneId);
+                       
                     retval = simdrv_Transact(pDev, &pdu);
                     if ( retval != 0 )
                         pDev->m_NeedsReset = 1;
@@ -1918,9 +1973,18 @@ if ( tmp > 50 )
             }
             break;
             case TEQUAL0_POWER:
+                // Log
+                printk(KERN_ALERT
+                       "simdrv: phonesim%d: TEQUAL0_POWER\n",
+                       pDev->m_PhoneId);
+                           
                 retval = dev_PowerSim(pDev,(arg) ? STATE_ON : STATE_OFF);
                 break;
             case TEQUAL0_CLOCK:
+                // Log
+                printk(KERN_ALERT
+                       "simdrv: phonesim%d: TEQUAL0_CLOCK\n",
+                       pDev->m_PhoneId);              
                 retval = dev_ClockSim(pDev,(arg) ? STATE_ON : STATE_OFF);
                 break;
             case TEQUAL0_STATUS:
@@ -2703,8 +2767,6 @@ printk("SIM needs reset\n");
 //  Timer function - simulates SIM Insert/Remove IRQ
 //                   for all phones
 //
-#define AMP_CHECK_TIME  (2 * 15)   // Main timer runs every 500 ms
-                                   // So check AMPs every 15s
 
 static void
 simdrv_TimerFunctionWorker(
@@ -2712,43 +2774,6 @@ struct work_struct *work_arg
 )
 {
   int     sim;
-  static int ampCheckTimer = 0;
-
-#if 0
-
-  // Increment AMP check timer
-  ampCheckTimer++;
-
-  // If AMP check timer expired...
-  if (ampCheckTimer >= AMP_CHECK_TIME)
-  {
-    // For all possible AMPs...
-    for (sim = NUM_PHONES; sim < NUM_DEVICES; sim++ )
-    {
-      // Access AMP instance
-      phoneSIMStruct *dev = &phoneSIMData[sim];
-
-      // If already initialized...
-      if (dev->m_PhoneId >= NUM_PHONES &&
-          dev->m_PhoneId < NUM_DEVICES)
-      {
-        // Onto next
-        continue;
-      }
-
-      // If AMP present...
-      if (dev_IsPhonePresent(sim))
-      {
-        // Initialize
-        simdrv_init_phone(sim);
-      }
-    }
-
-    // Reset timer
-    ampCheckTimer = 0;
-  }
-
-#endif
 
   for ( sim = 0; sim < NUM_DEVICES; sim++ )
   {
@@ -2771,14 +2796,10 @@ struct work_struct *work_arg
                  sim, dev->m_SimPresent, bySimPresent);
 
           dev->m_NeedsReset = 1;
-//          dev->Flags.MediaChange = 1;
-          // power OFF SIM
           dev_PowerSim(dev, STATE_OFF);
 
           dev->m_ActualIrEvents++;
-          // signal SIGIO to application
-//            if (dev->DoNotify && UD->NotifyList)
-//                kill_fasync(&UD->NotifyList, SIGIO, POLL_IN);
+
           // IRQ simulation
           dev->m_SimPresent = bySimPresent;
           wake_up(&dev->m_InsertWakeQueue);
@@ -3599,16 +3620,7 @@ simdrv_init_phone(int ph)
   // prepare default UART configuration for T=0 protocol
   PD->m_DefaultUartConfig.m_nBaudRate = DEFAUL_BAUD_RATE;
   PD->m_DefaultUartConfig.m_chLcr = LCR_DATA_BITS_8 | LCR_PARITY_EVEN | LCR_STOP_BITS_2;
-  // PD->m_DefaultUartConfig.m_chSpc = SPC_T0_ENABLE | SPC_TX_RETRY_THREE; // plus direct coding convention
   PD->m_DefaultUartConfig.m_chSpc = SPC_T0_ENABLE; // plus direct coding convention
-
-  // disable all interrupts for the phone
-  simdrv_isr_all_disable(PD);     // just in case
-  // configure UART to default configuration
-  // simdrv_UartConfig(PD, &PD->m_DefaultUartConfig);
-
-  dev_iowrite8(PD, 1, PD->m_Uart.t0ctr);  // clear UART Rx/Tx error counter
-  dev_iowrite8(PD, 1, PD->m_Uart.tcd);    // set UART Tx inter-character delay (G20 needs it to be at least 1)
 
   // set statistics variables
   PD->tx_err_flg = 0;             // Set when the transmitter is unable to
@@ -3735,6 +3747,10 @@ static inline int simdrv_init(void)
 
       // Initialize timer
       init_timer(&PD->m_SendNullTimer);
+      
+      // Perform mappings
+      dev_GetFpgaRegisters(PD, ph);
+      dev_GetUartRegisters(PD, ph);
     }
 
     // Initialize all probe instances

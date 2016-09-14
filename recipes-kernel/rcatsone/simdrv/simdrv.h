@@ -277,6 +277,7 @@ enum ioc_nr
     response_nr,
     config_nr,
     enable_nr,
+    disable_nr,
     version_nr,
     command_full_nr,
     response_negotiation_nr,
@@ -300,6 +301,7 @@ enum ioc_nr
 #define SIMDRV_RESPONSE     _IOW(SIMDRV_IOC_MAGIC, response_nr, uint8_t)
 #define SIMDRV_SET          _IOW(SIMDRV_IOC_MAGIC, set_nr, uart_config)
 #define SIMDRV_ENABLE       _IO (SIMDRV_IOC_MAGIC, enable_nr)
+#define SIMDRV_DISABLE      _IO (SIMDRV_IOC_MAGIC, disable_nr)
 #define SIMDRV_VERSION      _IO (SIMDRV_IOC_MAGIC, version_nr)
 #define SIMDRV_CONFIG       _IOW(SIMDRV_IOC_MAGIC, config_nr, SimConfigHeader)
 #define SIMDRV_COMMAND_FULL _IOWR(SIMDRV_IOC_MAGIC, command_full_nr, SimCommand)
