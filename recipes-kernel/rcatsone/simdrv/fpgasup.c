@@ -168,6 +168,14 @@ void fpga_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
     p_Fpga->ph_ssr = fpga_mapped_address + LPH_SSR(p_PhoneId);
     p_Fpga->ph_scr = fpga_mapped_address + LPH_SCR(p_PhoneId);
     p_Fpga->ph_imr = fpga_mapped_address + LPH_IER(p_PhoneId);
+    
+    // Log mappings
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->sim_status 0x%x\n", p_PhoneId, (int) p_Fpga->sim_status);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->sim_rcon_csr 0x%x\n", p_PhoneId, (int) p_Fpga->sim_rcon_csr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->sim_rcon_addr 0x%x\n", p_PhoneId, (int) p_Fpga->sim_rcon_addr);            
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->ph_ssr 0x%x\n", p_PhoneId, (int) p_Fpga->ph_ssr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->ph_scr 0x%x\n", p_PhoneId, (int) p_Fpga->ph_scr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->ph_imr 0x%x\n", p_PhoneId, (int) p_Fpga->ph_imr);   
 }
 
 
