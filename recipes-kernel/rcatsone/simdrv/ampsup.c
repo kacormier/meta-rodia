@@ -191,19 +191,21 @@ int amp_PowerSim(int thePhoneId,
 
 void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
 {
-    // Each AMP has its own phone so only ever phone 0 for amp
-    p_PhoneId = 0;
-
     // Precompute phone/UART control/SIM FPGA registers
-    // No easy mapping with current macros
     p_Fpga->sim_status = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS_OFFSET);
-
     p_Fpga->sim_rcon_csr  = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_RCON_CSR_OFFSET);
     p_Fpga->sim_rcon_addr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_RCON_ADDR_OFFSET);
-
     p_Fpga->ph_ssr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + PH_SSR_OFFSET);
     p_Fpga->ph_scr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + PH_SCR_OFFSET);
     p_Fpga->ph_imr = (char *) (SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + PH_IMR_OFFSET);
+    
+    // Log mappings
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->sim_status 0x%x\n", p_PhoneId, (int) p_Fpga->sim_status);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->sim_rcon_csr 0x%x\n", p_PhoneId, (int) p_Fpga->sim_rcon_csr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->sim_rcon_addr 0x%x\n", p_PhoneId, (int) p_Fpga->sim_rcon_addr);            
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->ph_ssr 0x%x\n", p_PhoneId, (int) p_Fpga->ph_ssr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->ph_scr 0x%x\n", p_PhoneId, (int) p_Fpga->ph_scr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Fpga->ph_imr 0x%x\n", p_PhoneId, (int) p_Fpga->ph_imr);    
 }
 
 
