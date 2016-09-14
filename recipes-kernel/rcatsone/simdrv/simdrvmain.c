@@ -228,7 +228,6 @@ struct  phoneSIMStruct
     //wait_queue_head_t   tx_wake_queue;      // UART Tx event: ready to send or error
     //wait_queue_head_t   rx_wake_queue;
     wait_queue_head_t   ioctl_wake_queue;   // read data is ready for ioctl level
-    wait_queue_head_t   m_InsertWakeQueue;  // wake when SIM is Inserted/Removed
 
     UartRegs    m_Uart;
     FpgaRegs    m_Fpga;
@@ -1407,23 +1406,6 @@ static inline uint8_t simdrv_translateEvent(phoneSIMStruct * p_Dev, BufferElemen
 //
 //
 //
-static unsigned int simdrv_poll(struct file * file, struct poll_table_struct * poll_table)
-{
-    unsigned int    nRetval = 0;
-    FileStruct      *pFile = (FileStruct *)file->private_data;
-    phoneSIMStruct  *pDev = pFile->m_pUartStruct;
-
-    poll_wait(file,&pDev->m_InsertWakeQueue,poll_table);
-
-    if (pDev->m_ActualIrEvents != pDev->m_AcknowledgedIrEvents)
-        nRetval |= POLLPRI; // unacknowledged insert/remove
-
-    return nRetval;
-}
-
-//
-//
-//
 static int 
 simdrv_UartEnable(
   phoneSIMStruct *pDev,
@@ -2500,7 +2482,6 @@ struct work_struct *work_arg
 
           // IRQ simulation
           dev->m_SimPresent = bySimPresent;
-          wake_up(&dev->m_InsertWakeQueue);
       }
   }
 
@@ -2530,38 +2511,6 @@ static inline void simdrv_StartInsertTimer(const unsigned long p_nJifs)
     timer_IrCheck.data = (unsigned long)p_nJifs;    // 500 msec
     timer_IrCheck.expires = jiffies + p_nJifs;
     add_timer(&timer_IrCheck);
-}
-
-//
-// IOCTL function - returns SIM status: SIM Inserted/Removed
-//                  function also can wait until Insert/Remove event is happened
-//                  OR until SIM is present (controlled by insert->Flags)
-//
-// struct   tequal0_insertion   {
-//  __u32       IREventCount;   // Number of Insert/Remove Events Since Open
-//  __u16       SIMPresent;     // SIM Currently Inserted
-//  __u16       Flags;          // Describes ioctl's blocking policies
-//                              //   BLOCK_INSERTED - Block until SIM Present is true
-//                              //   BLOCK_IR_EVENT - Block until any Insert/Remove Event
-//  __u32       Timeout;        // Max number of HZ (jiffies) to wait before timeout
-//  __u8        Slot[2];        // (read only) Slot Code one Letter [A-L], one digit [1-3]
-//} tequal0_insertion;
-//
-//
-static inline
-int simdrv_WaitInsert(phoneSIMStruct * p_Dev, uint16_t p_nNeeded)
-{
-    if (   (p_nNeeded & BLOCK_IR_EVENT)
-//        && (p_Insert->m_IrEventCount != p_Dev->m_ActualIrEvents)- next line overwrite this one
-        && (p_Dev->m_AcknowledgedIrEvents != p_Dev->m_ActualIrEvents))
-    {
-        p_nNeeded &= ~BLOCK_IR_EVENT;
-    }
-    if ((p_nNeeded == BLOCK_INSERTED) && (dev_IsSimPresent(p_Dev)))
-    {
-        p_nNeeded &= ~BLOCK_INSERTED;
-    }
-    return p_nNeeded;
 }
 
 //
@@ -3144,7 +3093,6 @@ struct file_operations simdrv_fops =
 #endif
     open:       simdrv_open,
     release:    simdrv_release,
-    poll:       simdrv_poll,
 //    fasync:     simdrv_fasync,
 };
 
@@ -3312,8 +3260,6 @@ simdrv_init_phone(int ph)
 
   // initialize ioctl wait queue
   init_waitqueue_head(&PD->ioctl_wake_queue);
-  // initialize wait queue for SIM insert/remove events
-  init_waitqueue_head(&PD->m_InsertWakeQueue);
 
   // initilize Transmit semaphore
   sema_init(&PD->m_TxBuffer.m_TxSemaphore, 1);       // 1 - means semaphore available
