@@ -367,7 +367,7 @@ struct timer_list   timer_IrCheck;
  */
 struct work_cont {
 	struct work_struct real_work;
-	int    arg;
+	int arg;
 } work_cont;
 
 // Our work queue functions
@@ -2447,6 +2447,7 @@ int simdrv_ExecutePps(phoneSIMStruct *p_Dev, uint8_t p_byBaudRate)
 //  Timer function - simulates SIM Insert/Remove IRQ
 //                   for all phones
 //
+#define SIMDRV_CHECK_INTERVAL 30  // every 15 seconds
 
 static void
 simdrv_TimerFunctionWorker(
@@ -2454,6 +2455,25 @@ struct work_struct *work_arg
 )
 {
   int     sim;
+  unsigned long p_nJifs;
+  struct work_cont *c_ptr;
+  static int logCount = 0;
+  
+  c_ptr = container_of(work_arg, struct work_cont, real_work);
+
+  // Increment log count
+  logCount++;
+  
+  // If matched inerval...
+  if (logCount >= SIMDRV_CHECK_INTERVAL)
+  {
+    // Log insertion change
+    printk(KERN_ALERT
+           "simdrv: checking SIM insertion/removal\n");
+    
+    // Reset
+    logCount = 0;
+  }
 
   for ( sim = 0; sim < NUM_DEVICES; sim++ )
   {
@@ -2485,21 +2505,27 @@ struct work_struct *work_arg
       }
   }
 
-  iowrite8(0x00, ssw_irq_reg);
-  iowrite8(0x01, ssw_irq_reg);
+  // Access interval
+  p_nJifs = (unsigned long) (c_ptr->arg);
+  
+  // Restart timer
+  timer_IrCheck.expires = jiffies + p_nJifs;
+  add_timer(&timer_IrCheck);
 }
 
 
 static void
 simdrv_TimerFunction(unsigned long p_nJifs)
 {
+  // Acknowledge interrupt
+  iowrite8(0x00, ssw_irq_reg);
+  iowrite8(0x01, ssw_irq_reg);
+    
   // Schedule work queue
+  simdrv_timer_wq.arg = (int) p_nJifs;
   schedule_work(&simdrv_timer_wq.real_work);
-
-  // restart timer
-  timer_IrCheck.expires = jiffies + p_nJifs;
-  add_timer(&timer_IrCheck);
 }
+
 //
 //
 //
