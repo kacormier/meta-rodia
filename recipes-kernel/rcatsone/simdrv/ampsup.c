@@ -3,6 +3,7 @@
 #include <linux/delay.h>    /* udelay */
 #include <linux/file.h>
 #include <linux/fs.h>
+#include <linux/mutex.h>
 #include <asm/segment.h>
 #include <asm/uaccess.h>
 #include "fpga.h"
@@ -214,27 +215,46 @@ void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
 //
 void amp_GetUartRegisters(struct UartRegs *p_Uart, int p_PhoneId)
 {
+    int zeroPhoneId;
+    
     // Each AMP has its own phone so only ever phone 0 for amp
-    p_PhoneId = 0;
+    zeroPhoneId = 0;
 
     // All UART registers offset by UART_BASE
 
     // Precompute register addresses.
-    p_Uart->rbr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_RHR(p_PhoneId) - UART_BASE);
-    p_Uart->ier = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_IER(p_PhoneId) - UART_BASE);
-    p_Uart->iir = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_IIR(p_PhoneId) - UART_BASE);
+    p_Uart->rbr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_RHR(zeroPhoneId) - UART_BASE);
+    p_Uart->ier = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_IER(zeroPhoneId) - UART_BASE);
+    p_Uart->iir = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_IIR(zeroPhoneId) - UART_BASE);
     p_Uart->fcr = p_Uart->iir;
-    p_Uart->lcr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_LCR(p_PhoneId) - UART_BASE);
-    p_Uart->lsr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_LSR(p_PhoneId) - UART_BASE);
-    p_Uart->msr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_MSR(p_PhoneId) - UART_BASE);
-    p_Uart->dll = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_DLLA(p_PhoneId) - UART_BASE);
-    p_Uart->dlh = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_DLHA(p_PhoneId) - UART_BASE);
-    p_Uart->spc = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_SPC(p_PhoneId) - UART_BASE);
+    p_Uart->lcr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_LCR(zeroPhoneId) - UART_BASE);
+    p_Uart->lsr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_LSR(zeroPhoneId) - UART_BASE);
+    p_Uart->msr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_MSR(zeroPhoneId) - UART_BASE);
+    p_Uart->dll = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_DLLA(zeroPhoneId) - UART_BASE);
+    p_Uart->dlh = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_DLHA(zeroPhoneId) - UART_BASE);
+    p_Uart->spc = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_SPC(zeroPhoneId) - UART_BASE);
 
-    p_Uart->t0ctr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_T0_CTR(p_PhoneId) - UART_BASE);
-    p_Uart->rtl = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_RTL(p_PhoneId) - UART_BASE);
-    p_Uart->tfs = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_TFS(p_PhoneId) - UART_BASE);
-    p_Uart->tcd = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_TCD(p_PhoneId) - UART_BASE);
+    p_Uart->t0ctr = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_T0_CTR(zeroPhoneId) - UART_BASE);
+    p_Uart->rtl = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_RTL(zeroPhoneId) - UART_BASE);
+    p_Uart->tfs = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_TFS(zeroPhoneId) - UART_BASE);
+    p_Uart->tcd = (char *) (SIMDRV_AMP_FPGA_UART_BASE_ADDRESS + UART_TCD(zeroPhoneId) - UART_BASE);
+    
+    // Log mappings
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->rbr 0x%x\n", p_PhoneId, (int) p_Uart->rbr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->ier 0x%x\n", p_PhoneId, (int) p_Uart->ier);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->iir 0x%x\n", p_PhoneId, (int) p_Uart->iir);      
+          
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->lcr 0x%x\n", p_PhoneId, (int) p_Uart->lcr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->lsr 0x%x\n", p_PhoneId, (int) p_Uart->lsr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->msr 0x%x\n", p_PhoneId, (int) p_Uart->msr);       
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->dll 0x%x\n", p_PhoneId, (int) p_Uart->dll);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->dlh 0x%x\n", p_PhoneId, (int) p_Uart->dlh);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->spc 0x%x\n", p_PhoneId, (int) p_Uart->spc);
+    
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->t0ctr 0x%x\n", p_PhoneId, (int) p_Uart->t0ctr);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->rtl 0x%x\n", p_PhoneId, (int) p_Uart->rtl);       
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->tfs 0x%x\n", p_PhoneId, (int) p_Uart->tfs);
+    printk(KERN_ALERT "simdrv: phonesim%d: p_Uart->tcd 0x%x\n", p_PhoneId, (int) p_Uart->tcd);      
 }
 
 
@@ -418,6 +438,7 @@ amp_ioread8(
   // Buffer to spped things up
   static char myCommandBuffer[AMP_IO_BUFFER_SIZE];
   static char * myAddressPointer = NULL;
+  extern struct mutex gUsbMutex;
 
   char * myInsertionPointer = NULL;
   size_t myLength = 0;
@@ -426,7 +447,10 @@ amp_ioread8(
   int ret = 0;
   long theResult;
   char *myLeftoverPointer = 0;
-
+  
+  // Lock
+  mutex_lock(&gUsbMutex);
+  
   // If buffer not primed...
   if (!myAddressPointer)
   {
@@ -477,6 +501,9 @@ amp_ioread8(
     // Log for now
     printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
 
+    // Unlock
+    mutex_unlock(&gUsbMutex);
+  
     // Return result
     return(ret);
   }
@@ -539,6 +566,9 @@ amp_ioread8(
   printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)",
          thePhoneId, myRequest, (ret == 0 ? "ok" : "fail"));
 
+  // Unlock
+  mutex_unlock(&gUsbMutex);
+    
   // Return result
   return(ret == 0 ? theResult : 0);
 }
@@ -558,7 +588,11 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   char * myRequest = &myCommandBuffer[0];
   char * myResponse = NULL;
   int ret = 0;
-
+  extern struct mutex gUsbMutex;
+  
+  // Lock
+  mutex_lock(&gUsbMutex);
+    
   // If buffer not primed...
   if (!myAddressPointer)
   {
@@ -609,6 +643,9 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
     // Log for now
     printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
 
+    // Unlock
+    mutex_unlock(&gUsbMutex);
+    
     // Return result
     return(ret);
   }
@@ -646,6 +683,9 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)",
          thePhoneId, myRequest, (ret == 0 ? "ok" : "fail"));
 
+  // Unlock
+  mutex_unlock(&gUsbMutex);
+    
   // Return result
   return(ret);
 }

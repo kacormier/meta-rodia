@@ -30,7 +30,6 @@
 
 // Enable AMP support (or not)
 #define SIM_DEV_ENABLE_AMP_SUPPORT
-#define SIM_DEV_ENABLE_WORKAROUNDS
 
 #ifndef KERNEL_VERSION /* pre-2.1.90 didn't have it */
 #  define KERNEL_VERSION(vers,rel,seq) ( ((vers)<<16) | ((rel)<<8) | (seq) )
@@ -67,7 +66,7 @@
 #include <linux/ioport.h>
 #include <linux/interrupt.h>    // from 2.6.16
 #include <asm/atomic.h>     /* atomic integer operations */
-#include <linux/semaphore.h>  /* semaphores */
+#include <linux/mutex.h>
 #include <asm/uaccess.h>    /* access_ok */
 #include <asm/system.h>     /* cli(), *_flags */
 #include <asm/io.h>     /* ioremap, iounmap */
@@ -335,12 +334,18 @@ typedef struct  FileStruct
 #define NUM_AMPS  0   // No support
 #endif
 
+// Our global USB mutex
+struct mutex gUsbMutex;
+
 /*=======================GLOBAL VARIABLES==========================
  * Global Data (static not needed because EXPORT_NO_SYMBOLS is used)
  */
 
 // Devices include probe + AMP
 #define NUM_DEVICES  (NUM_PHONES + NUM_AMPS)
+
+// Our mutexes
+struct mutex myCommsLocks[NUM_DEVICES];
 
 uint32_t        g_FpgaVersion = 0;
 uint32_t        read_timeout_ms = READ_TIMEOUT_MS;
@@ -365,6 +370,10 @@ struct timer_list   timer_IrCheck;
 
 /*===================WORK QUEUE SUPPORT==========================
  */
+
+// Our dedicated timer work queue
+static struct workqueue_struct *timer_wq = 0;
+
 struct work_cont {
 	struct work_struct real_work;
 	int arg;
@@ -373,8 +382,8 @@ struct work_cont {
 // Our work queue functions
 static void simdrv_TimerFunctionWorker(struct work_struct *work);
 
-// Our work queues
-struct work_cont simdrv_timer_wq;
+// Our work item
+struct work_cont simdrv_timer_work;
 
 
 uint8_t     g_LsrTxError;       // different UART type have this error bit in different places
@@ -2477,15 +2486,16 @@ struct work_struct *work_arg
 
   for ( sim = 0; sim < NUM_DEVICES; sim++ )
   {
+      // Locals
       phoneSIMStruct      *dev = &phoneSIMData[sim];
-
-// For now skip AMP logic untill details figured out
-#ifdef SIM_DEV_ENABLE_WORKAROUNDS
-      if (sim >= NUM_PHONES)
+      uint8_t byIir;
+      
+      // If phone not initialized...
+      if (dev->m_PhoneId == NUM_DEVICES)
       {
+        // Skip
         continue;
       }
-#endif
 
       volatile uint8_t    bySimPresent = dev_IsSimPresent(dev);
       if ( bySimPresent != dev->m_SimPresent)
@@ -2496,7 +2506,7 @@ struct work_struct *work_arg
                  sim, dev->m_SimPresent, bySimPresent);
 
           dev->m_NeedsReset = 1;
-          dev_PowerSim(dev, STATE_OFF);
+          dev_ClockSim(dev, STATE_OFF);
 
           dev->m_ActualIrEvents++;
 
@@ -2521,9 +2531,9 @@ simdrv_TimerFunction(unsigned long p_nJifs)
   iowrite8(0x00, ssw_irq_reg);
   iowrite8(0x01, ssw_irq_reg);
     
-  // Schedule work queue
-  simdrv_timer_wq.arg = (int) p_nJifs;
-  schedule_work(&simdrv_timer_wq.real_work);
+  // Queue work to dedicated queue
+  simdrv_timer_work.arg = (int) p_nJifs;
+  queue_work(timer_wq, &simdrv_timer_work.real_work);
 }
 
 //
@@ -3193,9 +3203,14 @@ static void simdrv_cleanup_module(void)
     default:
         break;
     }
-
-    // Flush work queues
-	flush_work(&simdrv_timer_wq.real_work);
+    
+    // If timer work queue...
+    if (timer_wq)
+	  {        
+	    // Cleanup
+  		flush_workqueue(timer_wq);
+  		destroy_workqueue(timer_wq);
+	  } 
 
     printk("simdrv: Module Unloading...\n");
     return;
@@ -3393,6 +3408,7 @@ static inline int simdrv_init(void)
 static int __init simdrv_init_module(void)
 {
     int result = 0;
+    int index = 0;
 
     DriverState = None;         /* start initialization */
 
@@ -3485,8 +3501,15 @@ static int __init simdrv_init_module(void)
 #endif
     DriverState = Statistic;
 
+    // Construct work queues
+    if (!timer_wq)
+      timer_wq = create_singlethread_workqueue("timer_wq");
+
     // Initialize work queues
-  	INIT_WORK(&simdrv_timer_wq.real_work, simdrv_TimerFunctionWorker);
+  	INIT_WORK(&simdrv_timer_work.real_work, simdrv_TimerFunctionWorker);
+  	
+  	// Initialized mutexes
+  	mutex_init(&gUsbMutex);
 
     printk("simdrv: Loaded Successfully, irq = %d.\n", fpga_irq);
     return 0; /* succeed */
