@@ -2458,6 +2458,9 @@ int simdrv_ExecutePps(phoneSIMStruct *p_Dev, uint8_t p_byBaudRate)
 //
 #define SIMDRV_CHECK_INTERVAL 30  // every 15 seconds
 
+// Have we insertion checked the AMP?
+static int gAmpPhoneInsertionChecked[NUM_AMPS] = { 0, 0, 0 };
+
 static void
 simdrv_TimerFunctionWorker(
 struct work_struct *work_arg
@@ -2468,6 +2471,7 @@ struct work_struct *work_arg
   struct work_cont *c_ptr;
   static int logCount = 0;
   
+  // Get container to work item
   c_ptr = container_of(work_arg, struct work_cont, real_work);
 
   // Increment log count
@@ -2484,6 +2488,7 @@ struct work_struct *work_arg
     logCount = 0;
   }
 
+  // For all devices...
   for ( sim = 0; sim < NUM_DEVICES; sim++ )
   {
       // Locals
@@ -2492,6 +2497,17 @@ struct work_struct *work_arg
       
       // If phone not initialized...
       if (dev->m_PhoneId == NUM_DEVICES)
+      {
+        // Skip
+        continue;
+      }
+
+      // AMP-based phones have no visibility to insertion status
+      // so let's avoid some continuous noise of useless reading
+
+      // If AMP device and already cehcked...
+      if (sim >= NUM_PHONES &&
+          gAmpPhoneInsertionChecked[sim - NUM_PHONES])
       {
         // Skip
         continue;
@@ -2512,6 +2528,13 @@ struct work_struct *work_arg
 
           // IRQ simulation
           dev->m_SimPresent = bySimPresent;
+          
+          // If AMP device...
+          if (sim >= NUM_PHONES)
+          {
+            // Update AMP insertion cehck status
+            gAmpPhoneInsertionChecked[sim - NUM_PHONES] = 1;
+          }
       }
   }
 
