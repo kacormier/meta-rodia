@@ -187,7 +187,7 @@ int amp_PowerSim(int thePhoneId,
 #define SIM_RCON_CSR_OFFSET   0x9   // 0x29
 #define SIM_RCON_ADDR_OFFSET  0x8   // 0x28
 #define PH_SSR_OFFSET         0x4   // 0x24
-#define PH_SCR_OFFSET         0x4   // 0x25
+#define PH_SCR_OFFSET         0x5   // 0x25
 #define PH_IMR_OFFSET         0x6   // 0x26
 
 void amp_GetFpgaRegisters(struct FpgaRegs *p_Fpga, int p_PhoneId)
