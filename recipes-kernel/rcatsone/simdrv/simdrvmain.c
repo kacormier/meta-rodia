@@ -1624,6 +1624,7 @@ static long simdrv_ioctl(struct file * file, unsigned int command, unsigned long
 #endif
 {
     int retval = 0;
+    unsigned int delta = 0;
 
 //static int dbg_cnt = 0;
     FileStruct      *pFile = (FileStruct *)file->private_data;
@@ -1898,19 +1899,44 @@ if ( tmp > 50 )
 
       case SIMDRV_MEM_READ:
       {
-        AMP_Register    reg;
+        // Locals
+        AMP_Register reg;
+        unsigned int originalAddress = 0;
+        unsigned int mappedAddress = 0;
+
         if ( copy_from_user(&reg, (AMP_Register *)arg, sizeof(AMP_Register)))
             return -EFAULT;
         else
         {
+          // Set original address
+          originalAddress = reg.addr;
+
+          // In case of probe access, we need to adjust address of
+          // register to mapped address.
+
+          // If probe memory access...
+          if (pDev->m_PhoneId < NUM_PHONES)
+          {
+            // Tweak address
+            delta = reg.addr - FPGA_REG_BASE;
+            reg.addr = fpga_mapped_address + delta;            
+          }
+
+          // Set mapped address
+          mappedAddress = reg.addr;
+
           // No visibility of failure
           reg.res = dev_ioread8(pDev, reg.addr);
           retval = 0;
 
           // Log insertion change
           printk(KERN_ALERT
-                 "simdrv: phonesim%d: SIMDRV_MEM_READ (addr 0x%x val 0x%x)\n",
-                 pDev->m_PhoneId, reg.addr, reg.res);
+                 "simdrv: phonesim%d: SIMDRV_MEM_READ (addr 0x%x/0x%x val 0x%x)\n",
+                 pDev->m_PhoneId, originalAddress, mappedAddress, reg.res);
+
+          // Put read address back to original;
+          // may be used for subsequent write.
+          reg.addr = originalAddress;          
         }
         if ( retval == 0 )
             if (copy_to_user((void*)arg, &reg, sizeof(reg)))
@@ -1920,25 +1946,51 @@ if ( tmp > 50 )
 
       case SIMDRV_MEM_WRITE:
       {
-        AMP_Register    reg;
+        // Locals
+        AMP_Register reg;
+        unsigned int originalAddress = 0;
+        unsigned int mappedAddress = 0;
             
         if ( copy_from_user(&reg, (AMP_Register *)arg, sizeof(AMP_Register)))
             return -EFAULT;
         else
         {
+          // Set original address
+          originalAddress = reg.addr;
+
+          // In case of probe access, we need to adjust address of
+          // register to mapped address.
+
+          // If probe memory access...
+          if (pDev->m_PhoneId < NUM_PHONES)
+          {
+            // Tweak address
+            delta = reg.addr - FPGA_REG_BASE;
+            reg.addr = fpga_mapped_address + delta;
+          }
+          // Set mapped address
+          mappedAddress = reg.addr;
+
           // No visibility of failure
           dev_iowrite8(pDev, reg.res, reg.addr);
           retval = 0;
 
+          // If probe memory access...
+          if (pDev->m_PhoneId < NUM_PHONES)
+          {
+              /* wait till write is finished */
+              wmb();
+              /* and then read it back */
+              reg.res = dev_ioread8(pDev, reg.addr);
+          }
+
           // Log insertion change
           printk(KERN_ALERT
-                 "simdrv: phonesim%d: SIMDRV_MEM_WRITE (addr 0x%x val 0x%x)\n",
-                 pDev->m_PhoneId, reg.addr, reg.res);
+                 "simdrv: phonesim%d: SIMDRV_MEM_WRITE (addr 0x%x/0x%x val 0x%x)\n",
+                 pDev->m_PhoneId, originalAddress, mappedAddress, reg.res);
         }
       }
       break;
-
-
 
         default:
             retval = -ENOSYS;

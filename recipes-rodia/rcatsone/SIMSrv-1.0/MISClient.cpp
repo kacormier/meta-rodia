@@ -2312,10 +2312,6 @@ debug("|SIMClientStartup:  IsMultiRcatsSlave() returns %i", IsMultiRcatsSlave())
 			return MAKE_RCATS_ERROR(ERROR_INVALID_CMD_RESP, ostr.str());
 		}
 
-		debug("|for Probe:  calling openFPGARegisterAccess");
-		if(openFPGARegisterAccess() < 0)
-			return MAKE_RCATS_ERROR(ERROR_RESOURCE_UNAVAILABLE, "openFPGARegisterAccess failed");
-
 		for(phoneID=0; phoneID < noOfPhone; phoneID++) {
 			if (IsMultiRcatsSlave() && !IsDeviceIndexWeControl(ph_ConvertCellPhoneToPhoneIndex(phoneID)))
 				continue;

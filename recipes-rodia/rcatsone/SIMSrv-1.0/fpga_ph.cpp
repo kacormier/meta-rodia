@@ -51,6 +51,10 @@ using namespace std;
 // External:
 extern void phone_sim_assignment(unsigned char phone, char sim);
 
+// AMP instances have ph=3,4,5
+#define AMP_PHONE_MIN 3
+#define AMP_PHONE_MAX 5
+
 //***************************  GLOBAL VARIABLES  *******************************
 const struct sim_control sim_control_struct[] =
 {
