@@ -12,6 +12,10 @@
 // Prototypes
 // ----------------------------------------------------------------------------
 
+void
+closeUsbCtrDevices(
+  void);
+
 int 
 usbio(
   int thePhoneId, 

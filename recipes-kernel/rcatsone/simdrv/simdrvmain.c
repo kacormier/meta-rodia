@@ -28,9 +28,6 @@
 #define SIM_DEV_BOARD
 #endif
 
-// Enable AMP support (or not)
-#define SIM_DEV_ENABLE_AMP_SUPPORT
-
 #ifndef KERNEL_VERSION /* pre-2.1.90 didn't have it */
 #  define KERNEL_VERSION(vers,rel,seq) ( ((vers)<<16) | ((rel)<<8) | (seq) )
 #endif
@@ -86,6 +83,7 @@
 #include "fpga.h"       // NUM_PHONES, FPGA Register Map for Phone-SIM interface
 #include "fpgasup.h"
 #include "ampsup.h"
+#include "usbsup.h"
 
 /*=======================INITIALIZATION STEPS DEFINITIONS==================
  */
@@ -328,21 +326,12 @@ typedef struct  FileStruct
 /*=========================== AMP SUPPORT DEFINITIONS =================
  */
 
-#ifdef SIM_DEV_ENABLE_AMP_SUPPORT
-#define NUM_AMPS  3   // Max per probe
-#else
-#define NUM_AMPS  0   // No support
-#endif
-
 // Our global USB mutex
 struct mutex gUsbMutex;
 
 /*=======================GLOBAL VARIABLES==========================
  * Global Data (static not needed because EXPORT_NO_SYMBOLS is used)
  */
-
-// Devices include probe + AMP
-#define NUM_DEVICES  (NUM_PHONES + NUM_AMPS)
 
 // Our mutexes
 struct mutex myCommsLocks[NUM_DEVICES];
@@ -3281,11 +3270,14 @@ static void simdrv_cleanup_module(void)
     
     // If timer work queue...
     if (timer_wq)
-	  {        
-	    // Cleanup
-  		flush_workqueue(timer_wq);
-  		destroy_workqueue(timer_wq);
-	  } 
+    {        
+      // Cleanup
+      flush_workqueue(timer_wq);
+      destroy_workqueue(timer_wq);
+    } 
+
+    // Cleanup any USB control devices
+    closeUsbCtrDevices();
 
     printk("simdrv: Module Unloading...\n");
     return;

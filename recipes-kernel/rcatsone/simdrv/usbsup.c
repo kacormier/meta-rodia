@@ -114,9 +114,6 @@ tty_setspeed(struct file *file, int speed)
   // Access terminal
   tty=(struct tty_struct*)file->private_data;
 
-	// tty_ioctl(f, TCGETS, (unsigned long)&settings);
-	// ile->f_op->ioctl(file->f_dentry->d_inode, file, TCGETS, (unsigned long)&settings);
-
 	tty->termios->c_iflag = 0;
 	tty->termios->c_oflag = 0;
 	tty->termios->c_lflag = 0;
@@ -141,7 +138,7 @@ tty_setspeed(struct file *file, int speed)
 }
 
 //
-//  tty_setspeed
+//  tty_read
 //
 #define BUFF_SIZE 64
 static int
@@ -203,7 +200,6 @@ tty_read(struct file *f, int timeout, unsigned char *string)
 
     f->f_pos = 0;
 
-    // if ((length = file->vfs_read(file, buff, BUFF_SIZE, &file->f_pos)) > 0)
     if ((length = f->f_op->read(f, buff, BUFF_SIZE, &f->f_pos)) > 0)
     {
 #if 0
@@ -234,6 +230,35 @@ tty_read(struct file *f, int timeout, unsigned char *string)
   return(result);
 }
 
+// Keep file open or not?
+#define USB_KEEP_FILE_OPEN
+
+// Our array of filename pointers for AMP control devices
+// Use full array so we can use phone ID as index;
+static int filePointersInitiaized = 0;
+static struct file *filePointers[NUM_DEVICES];
+
+void
+closeUsbCtrDevices(
+  void
+)
+{
+  // Locals
+  int index = 0;
+
+  // For all pointers...
+  for (index = 0; index < NUM_DEVICES; index++)
+  {
+    // if opened...
+    if (filePointers[index])
+    {
+      // Close and zero
+      filp_close(filePointers[index], 0);
+      filePointers[index] = 0;
+    }
+  }  
+}
+
 //
 //  tty_request
 //
@@ -250,6 +275,20 @@ tty_request(
   struct file *file;
   char * response = 0;
 
+  // If file pointers not initialized...
+  if (!filePointersInitiaized)
+  {
+    // For all pointers...
+    for (ret = 0; ret < NUM_DEVICES; ret++)
+    {
+      // Initialize
+      filePointers[ret] = NULL;
+    }
+
+    // Initialized
+    filePointersInitiaized = 1;
+  }
+
   // Set kernel context
   old_fs = get_fs();
   set_fs(get_ds());
@@ -260,33 +299,41 @@ tty_request(
            thePhoneId, ret, data[ret]);
 #endif
 
-  // Reset ret (maybe used above in debug)
+  // Reset ret (maybe used above)
   ret = 0;
 
-  // Open control path
-  file = filp_open(filename, O_RDWR | O_NOCTTY | O_NONBLOCK, 0);
+  // Access file pointer
+  file = filePointers[thePhoneId];
 
-  // If failed to open...
-  if (IS_ERR(file))
+  // If file not already opened...
+  if (!file)
   {
-    // Log
-    printk(KERN_ALERT "simdrv: phonesim%d: failed (open %d) %s\n",
-           thePhoneId, PTR_ERR(file), filename);
+    // Open control path
+    file = filp_open(filename, O_RDWR | O_NOCTTY | O_NONBLOCK, 0);
 
-    // Failed
-    ret = -EIO;
+    // If failed to open...
+    if (IS_ERR(file))
+    {
+      // Log
+      printk(KERN_ALERT "simdrv: phonesim%d: failed (open %d) %s\n",
+            thePhoneId, PTR_ERR(file), filename);
 
-    // Exit
-    goto out;
+      // Failed
+      ret = -EIO;
+
+      // Exit
+      goto out;
+    }
+
+    // Configure tty
+    tty_setspeed(file, 115200);
+
+    // Update entry
+    filePointers[thePhoneId] = file;
   }
-
-  // Configure tty
-  tty_setspeed(file, 115200);
 
   // Send command
   ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
-  // ret = file->f_op->write(file, (char *)data + pos, len - pos, &file->f_pos);
-  // ret = tty->ops->write(tty, (char *)data + pos, len - pos);
 
   // Log
   printk(KERN_ALERT
@@ -356,8 +403,14 @@ out:
   // If not errored...
   if (!IS_ERR(file))
   {
+    // If not keeping file open...
+#ifndef USB_KEEP_FILE_OPEN
+    // Forget file pointer
+    filePointers[ret] = NULL;
+
     // Close
     filp_close(file, 0);
+#endif  
   }
 
   // Restore context

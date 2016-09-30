@@ -364,4 +364,17 @@ typedef enum
     STATE_ON
 } StateChange;
 
+
+// Enable AMP support (or not)
+#define SIM_DEV_ENABLE_AMP_SUPPORT
+
+#ifdef SIM_DEV_ENABLE_AMP_SUPPORT
+#define NUM_AMPS  3   // Max per probe
+#else
+#define NUM_AMPS  0   // No support
+#endif
+
+// Devices include probe + AMP
+#define NUM_DEVICES  (NUM_PHONES + NUM_AMPS)
+
 #endif  /*_SIMDRV_H_*/
