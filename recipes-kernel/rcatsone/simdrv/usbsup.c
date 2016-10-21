@@ -336,9 +336,11 @@ tty_request(
   ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
 
   // Log
+#ifdef SIM_DEBUG_TRACE  
   printk(KERN_ALERT
          "simdrv: phonesim%d: vfs_write pos %d len %d ret %d\n",
            thePhoneId, pos, len - pos, ret);
+#endif
 
   if (ret < 0)
         goto out;
@@ -376,16 +378,6 @@ tty_request(
                       "%c%s",
                       RCTN_DELIM,
                       RCTN_RESULT_SUCCESS);
-
-  // Send request
-  pos = 0;
-  len = response - data;
-  ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
-
-  // Log
-  printk(KERN_ALERT
-         "simdrv: phonesim%d: vfs_write pos %d len %d ret %d\n",
-           thePhoneId, pos, len - pos, ret);
 
   // Force success
   ret = 0;

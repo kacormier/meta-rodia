@@ -487,7 +487,9 @@ amp_ioread8(
   myResponse = myInsertionPointer;
 
   // Log
+#ifdef SIM_DEBUG_TRACE
   printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
+#endif
 
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
@@ -562,9 +564,22 @@ amp_ioread8(
     }
   }
 
-  // Log for now
-  printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)",
-         thePhoneId, myRequest, (ret == 0 ? "ok" : "fail"));
+  // Log result
+  if (ret == 0)
+  {
+#ifdef SIM_DEBUG_TRACE
+    // Log (ok)
+    printk(KERN_ALERT "simdrv: phonesim%d: %s (ok)",
+          thePhoneId, myRequest);
+#endif
+  }
+  else
+  {
+    // Log (fail)
+    printk(KERN_ALERT "simdrv: phonesim%d: %s (fail)",
+          thePhoneId, myRequest);
+  }
+
 
   // Unlock
   mutex_unlock(&gUsbMutex);
@@ -629,7 +644,9 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   myLength = (myInsertionPointer - myRequest);
 
   // Log
+#ifdef SIM_DEBUG_TRACE  
   printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
+#endif
 
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
@@ -679,9 +696,21 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
     }
   }
 
-  // Log for now
-  printk(KERN_ALERT "simdrv: phonesim%d: %s (%s)",
-         thePhoneId, myRequest, (ret == 0 ? "ok" : "fail"));
+  // Log result
+  if (ret == 0)
+  {
+#ifdef SIM_DEBUG_TRACE
+    // Log (ok)
+    printk(KERN_ALERT "simdrv: phonesim%d: %s (ok)",
+          thePhoneId, myRequest);
+#endif
+  }
+  else
+  {
+    // Log (fail)
+    printk(KERN_ALERT "simdrv: phonesim%d: %s (fail)",
+          thePhoneId, myRequest);
+  }
 
   // Unlock
   mutex_unlock(&gUsbMutex);

@@ -377,4 +377,9 @@ typedef enum
 // Devices include probe + AMP
 #define NUM_DEVICES  (NUM_PHONES + NUM_AMPS)
 
+// Debug options
+// #define SIM_DEBUG_TRACE
+#define SIM_DEBUG_INTERRUPT_TRACE
+#define SIM_DEBUG_PHONE_INTERRUPT_TRACE
+
 #endif  /*_SIMDRV_H_*/
