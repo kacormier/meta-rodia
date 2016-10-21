@@ -3,7 +3,17 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>     // kmalloc()
 #include <linux/errno.h>    // error codes
+#include <linux/mutex.h>
 #include "circ_buffer.h"
+
+// In original version of driver all processing was initiated
+// in interrupt handlers therefore the legacy
+// spin_lock_irqsave
+// <work>
+// spin_unlock_irqrestore pattern; replace with mutex
+
+// Our global buffer mutex
+struct mutex gBufferMutex;
 
 // empty condition m_In == m_Out
 // full condition  mIn+1 == m_Out;
@@ -95,9 +105,10 @@ uint32_t cb_PutBlockLock(CircBufferHndl p_BufHndl, BufferElement *p_Block, uint3
     unsigned long   ulFlags;
     uint32_t        uRet;
 
-    spin_lock_irqsave(&p_BufHndl->m_Lock, ulFlags);
+    mutex_lock(&gBufferMutex);
     uRet = cb_PutBlock(p_BufHndl, p_Block, p_BlkSize);
-    spin_unlock_irqrestore(&p_BufHndl->m_Lock, ulFlags);
+    mutex_unlock(&gBufferMutex);
+
     return uRet;
 }
 //
@@ -124,9 +135,9 @@ uint32_t cb_PutElementLock(CircBufferHndl p_BufHndl, const BufferElement p_Val)
     unsigned long   ulFlags;
     uint32_t        uRet;
 
-    spin_lock_irqsave(&p_BufHndl->m_Lock, ulFlags);
+    mutex_lock(&gBufferMutex);
     uRet = cb_PutElement(p_BufHndl, p_Val);
-    spin_unlock_irqrestore(&p_BufHndl->m_Lock, ulFlags);
+    mutex_unlock(&gBufferMutex);
     return uRet;
 }
 //
@@ -157,9 +168,9 @@ uint32_t cb_GetBlockLock(CircBufferHndl p_BufHndl, BufferElement *p_Block, uint3
     unsigned long   ulFlags;
     uint32_t        uRet;
 
-    spin_lock_irqsave(&p_BufHndl->m_Lock, ulFlags);
+    mutex_lock(&gBufferMutex);
     uRet = cb_GetBlock(p_BufHndl, p_Block, p_BlkSize);
-    spin_unlock_irqrestore(&p_BufHndl->m_Lock, ulFlags);
+    mutex_unlock(&gBufferMutex);
     return uRet;
 }
 //
@@ -189,9 +200,9 @@ uint32_t cb_GetElementLock(CircBufferHndl p_BufHndl, BufferElement *p_Val)
     unsigned long   ulFlags;
     uint32_t        uRet;
 
-    spin_lock_irqsave(&p_BufHndl->m_Lock, ulFlags);
+    mutex_lock(&gBufferMutex);
     uRet = cb_GetElement(p_BufHndl, p_Val);
-    spin_unlock_irqrestore(&p_BufHndl->m_Lock, ulFlags);
+    mutex_unlock(&gBufferMutex);
     return uRet;
 }
 //
@@ -201,9 +212,9 @@ void cb_ClearBufferLock(CircBufferHndl p_BufHndl)
 {
     unsigned long   ulFlags;
 
-    spin_lock_irqsave(&p_BufHndl->m_Lock, ulFlags);
+    mutex_lock(&gBufferMutex);
     cb_ClearBuffer(p_BufHndl);
-    spin_unlock_irqrestore(&p_BufHndl->m_Lock, ulFlags);
+    mutex_unlock(&gBufferMutex);
 }
 //
 //  DEBUG print
@@ -216,3 +227,8 @@ void cb_PrintCircBuf(CircBufferHndl p_BufHndl, const char *p_pszHeader)
             cb_GetElementCount(p_BufHndl));
 }
 
+void
+cb_InitMutex(void)
+{
+    mutex_init(&gBufferMutex);
+}

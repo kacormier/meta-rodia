@@ -3575,8 +3575,11 @@ static int __init simdrv_init_module(void)
     // Initialize work queues
   	INIT_WORK(&simdrv_timer_work.real_work, simdrv_TimerFunctionWorker);
   	
-  	// Initialized mutexes
+  	// Initialize USB access mutext
   	mutex_init(&gUsbMutex);
+
+    // Initialize circular buffer mutex
+    cb_InitMutex();
 
     printk("simdrv: Loaded Successfully, irq = %d.\n", fpga_irq);
     return 0; /* succeed */

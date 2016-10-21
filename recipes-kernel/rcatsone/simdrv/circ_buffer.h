@@ -46,6 +46,9 @@ static inline void cb_ClearBuffer(CircBufferHndl p_BufHndl)
     p_BufHndl->m_In  = 0;
     p_BufHndl->m_Out = 0;
 }
+
+void cb_InitMutex(void);
+
 void cb_ClearBufferLock(CircBufferHndl p_BufHndl);
 
 int  cb_AllocBuffer(CircBufferHndl p_BufHndl, size_t p_Size, gfp_t p_GfpMask);
