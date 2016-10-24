@@ -381,5 +381,6 @@ typedef enum
 // #define SIM_DEBUG_TRACE
 #define SIM_DEBUG_INTERRUPT_TRACE
 #define SIM_DEBUG_PHONE_INTERRUPT_TRACE
+// #define SIM_DEBUG_FPGA_TRACE                // DEBUG FPGA requests
 
 #endif  /*_SIMDRV_H_*/

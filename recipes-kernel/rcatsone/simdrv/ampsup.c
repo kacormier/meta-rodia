@@ -486,11 +486,6 @@ amp_ioread8(
   // FPGA|GET|<address>|value
   myResponse = myInsertionPointer;
 
-  // Log
-#ifdef SIM_DEBUG_TRACE
-  printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-#endif
-
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
 
@@ -499,15 +494,6 @@ amp_ioread8(
   {
     // Stuff failed into request
     sprintf(myInsertionPointer, " (fail)\n");
-
-    // Log for now
-    printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-
-    // Unlock
-    mutex_unlock(&gUsbMutex);
-  
-    // Return result
-    return(ret);
   }
 
   // If successful call...
@@ -567,7 +553,7 @@ amp_ioread8(
   // Log result
   if (ret == 0)
   {
-#ifdef SIM_DEBUG_TRACE
+#ifdef SIM_DEBUG_FPGA_TRACE
     // Log (ok)
     printk(KERN_ALERT "simdrv: phonesim%d: %s (ok)",
           thePhoneId, myRequest);
@@ -643,11 +629,6 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   // Determine length
   myLength = (myInsertionPointer - myRequest);
 
-  // Log
-#ifdef SIM_DEBUG_TRACE  
-  printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-#endif
-
   // Invoke USB call
   ret = usbio(thePhoneId, myRequest, myLength);
 
@@ -656,15 +637,6 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   {
     // Stuff failed into request
     sprintf(myInsertionPointer, " (fail)\n");
-
-    // Log for now
-    printk(KERN_ALERT "simdrv: phonesim%d: %s", thePhoneId, myRequest);
-
-    // Unlock
-    mutex_unlock(&gUsbMutex);
-    
-    // Return result
-    return(ret);
   }
 
   // If successful call...
@@ -699,7 +671,7 @@ amp_iowrite8(int thePhoneId, uint8_t theValue, void *theAddress)
   // Log result
   if (ret == 0)
   {
-#ifdef SIM_DEBUG_TRACE
+#ifdef SIM_DEBUG_FPGA_TRACE
     // Log (ok)
     printk(KERN_ALERT "simdrv: phonesim%d: %s (ok)",
           thePhoneId, myRequest);
