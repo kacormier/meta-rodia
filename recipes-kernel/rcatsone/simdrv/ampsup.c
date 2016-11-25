@@ -64,7 +64,7 @@ int amp_AttachDevice(int thePhoneId,
           // attach to SIM
           amp_iowrite8(thePhoneId, 0x80,p_Fpga->sim_rcon_csr);
           // recalculate SIM status register address
-          p_Fpga->sim_status = SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS(p_DeviceId);
+          // p_Fpga->sim_status = SIMDRV_AMP_FPGA_CTRL_BASE_ADDRESS + SIM_STATUS(p_DeviceId);
       break;
       case DEVTYPE_DIRECT:    // attach phone to SIM directly disconnec UART
           if ( p_DeviceId > 3 )
@@ -141,40 +141,35 @@ int amp_PowerSim(int thePhoneId,
                  struct FpgaRegs *p_Fpga,
                  StateChange p_NewState)
 {
-/*    uint8_t     byRconCsr = amp_ioread8(p_Fpga->sim_rcon_csr);
+      // Log
+    printk(KERN_ALERT "simdrv: phonesim%d: power SIM %s",
+          thePhoneId, 
+          (p_NewState == STATE_ON ? "ON" : "OFF"));
+
+    uint8_t     byRconCsr = amp_ioread8(thePhoneId, p_Fpga->sim_rcon_csr);
 
     if ( p_NewState == STATE_ON && ((byRconCsr & RCON_CSR_VCC) == 0) )
     {       // SIM power is off - switch it ON
         uint8_t     bySst;
         int         i = 0;
-        amp_iowrite8((byRconCsr | RCON_CSR_VCC3), p_Fpga->sim_rcon_csr);
+        amp_iowrite8(thePhoneId, (byRconCsr | RCON_CSR_VCC3), p_Fpga->sim_rcon_csr);
         // busy wait untill VCC is ready
 
-        for (i = 0; i < 10000; i++)
-        {
-            bySst = amp_ioread8(p_Fpga->sim_status);
-            if ( (bySst & SST_VCC_READY) != 0 )
-                return 0;
-            if ( (bySst & SST_VCC_FAULT) != 0 )
-                return -EFAULT;
-        }
-
-        printk("=============VCC ON TIMEOUT====== bySst=0x%X\n", bySst);
-        return -ETIMEDOUT;
+        return(0);
     }
     else if ( p_NewState == STATE_OFF && ((byRconCsr & RCON_CSR_VCC) != 0) )
     {       // SIM power is on - switch it OFF
         byRconCsr &= ~RCON_CSR_RST;
-        amp_iowrite8(byRconCsr, p_Fpga->sim_rcon_csr);
+        amp_iowrite8(thePhoneId, byRconCsr, p_Fpga->sim_rcon_csr);
         //usleep(240);              // Match the cold reset delay (400 cycles min).
         byRconCsr &= ~RCON_CSR_CLK;
-        amp_iowrite8(byRconCsr, p_Fpga->sim_rcon_csr);
+        amp_iowrite8(thePhoneId, byRconCsr, p_Fpga->sim_rcon_csr);
         //usleep(20);
-        amp_iowrite8((byRconCsr & ~RCON_CSR_VCC), p_Fpga->sim_rcon_csr);
+        amp_iowrite8(thePhoneId, (byRconCsr & ~RCON_CSR_VCC), p_Fpga->sim_rcon_csr);
         //usleep(20000);            // A 10 mS minimum delay is required
                                     //  before applying another class.
     }
-    return 0;*/
+    return 0;
 
     // TBD
   return(0);
@@ -268,6 +263,11 @@ amp_WarmResetSim(
   struct FpgaRegs *p_Fpga)
 {
     uint8_t     byRconCsr ;
+
+    // Log
+    printk(KERN_ALERT "simdrv: phonesim%d: warm reset",
+          thePhoneId);
+
     // be shure that power and clock is ON
     int         retval = amp_ClockSim(thePhoneId, p_Fpga, STATE_ON);
 
@@ -402,6 +402,11 @@ amp_ResetSim(
   struct FpgaRegs *p_Fpga,
   StateChange p_NewState)
 {
+    // Log
+    printk(KERN_ALERT "simdrv: phonesim%d: reset SIM %s",
+          thePhoneId, 
+          (p_NewState == STATE_ON ? "ON" : "OFF"));
+
     uint8_t     byRconCsr = ioread8(p_Fpga->sim_rcon_csr);
 
     if ( p_NewState == STATE_ON && ((byRconCsr & RCON_CSR_RST) == 0) )

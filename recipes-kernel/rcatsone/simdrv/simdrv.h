@@ -378,7 +378,7 @@ typedef enum
 #define NUM_DEVICES  (NUM_PHONES + NUM_AMPS)
 
 // Debug options
-// #define SIM_DEBUG_TRACE
+#define SIM_DEBUG_TRACE
 #define SIM_DEBUG_INTERRUPT_TRACE
 #define SIM_DEBUG_PHONE_INTERRUPT_TRACE
 // #define SIM_DEBUG_FPGA_TRACE                // DEBUG FPGA requests

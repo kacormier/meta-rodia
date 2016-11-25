@@ -94,7 +94,6 @@ enum    {
     RegisterMajor,
     MajorDev,
     FPGA,
-    RxTasklet,
     IRQ,
     Statistic
 }           DriverState;
@@ -176,6 +175,24 @@ enum    {
 // Find new from-phone-buffer pointer with buffer wrap handled using module (%)
 #define BUF_PTR(_BUF, _newptr)  (_BUF->Base + ((_newptr - _BUF->Base) % (_BUF->Extent - _BUF->Base)))
 
+
+/*===================WORK QUEUE SUPPORT==========================
+ */
+
+// Our dedicated timer work queue
+static struct workqueue_struct *simdrv_wq = NULL;
+
+struct work_cont {
+	struct work_struct real_work;
+	int arg;
+} work_cont;
+
+// Our work queue functions
+static void simdrv_TimerFunctionWorker(struct work_struct *work);
+
+// Our work item
+struct work_cont simdrv_timer_work;
+
 /*=======================CONTROL STRUCTURES DEFINITIONS=================
  */
 
@@ -251,7 +268,10 @@ struct  phoneSIMStruct
     int         m_RxThreadStatus;
     int         m_TxStatus;                 /* UART open for Tx */
     int         m_RxStatus;                 /* UART open for Rx */
-    struct tasklet_struct   m_RxTasklet;    /* IRQ bottom half */
+
+
+    // struct tasklet_struct   m_RxTasklet;    /* IRQ bottom half */
+    struct work_cont m_RxWorkItem;          /* IRQ bottom half */
 
     CircBuffer  m_RxBuffer;                 /* receive buffer transfers received data and events to */
                                             /* the processing thread - initiated by open */
@@ -303,7 +323,7 @@ struct  phoneSIMStruct
     struct tagCmdRead   m_CmdReadLog[MAX_LOGGED_CMDS];
     uint32_t            m_numCmdReads;       // number of phone command buffer reads
 
-
+    uint8_t             m_UartEnabled;
 }   phoneSIMStruct;
 
 
@@ -356,24 +376,6 @@ uint8_t *ssw_irq_reg = NULL;
 
 // timer to simulate Insert/Remove interrupts
 struct timer_list   timer_IrCheck;
-
-/*===================WORK QUEUE SUPPORT==========================
- */
-
-// Our dedicated timer work queue
-static struct workqueue_struct *timer_wq = 0;
-
-struct work_cont {
-	struct work_struct real_work;
-	int arg;
-} work_cont;
-
-// Our work queue functions
-static void simdrv_TimerFunctionWorker(struct work_struct *work);
-
-// Our work item
-struct work_cont simdrv_timer_work;
-
 
 uint8_t     g_LsrTxError;       // different UART type have this error bit in different places
 //  function pointers ("virtual functions)
@@ -613,10 +615,10 @@ static int simdrv_Uart2DivisorToBaudrate(int p_nDivisor)
 //
 static inline void simdrv_isr_rx_enable(phoneSIMStruct *p_Dev)
 {
-    uint8_t  byUartIer  = IER_RX_IRQ_EN     | IER_LS_IRQ_EN;   //| IER_TX_IRQ_EN;
+    uint8_t  byUartIer  = IER_RX_IRQ_EN     | IER_LS_IRQ_EN;
     uint8_t  byPhoneIer = PH_IMR_VCC_IRQ_EN | PH_IMR_RST_IRQ_EN;
-    if ( g_FpgaVersion >= 7 )    // new UART
-        byUartIer |= IER_GLBL_IRQ_EN;   // UART-2 got global int disable bit
+    byUartIer |= IER_GLBL_IRQ_EN;   // UART-2 got global int disable bit
+    byUartIer |= IER_TX_IRQ_EN;     // UART-2 got TX FIFO
     simdrv_ClearRx(p_Dev);
     dev_iowrite8(p_Dev, byPhoneIer, p_Dev->m_Fpga.ph_imr);
     dev_iowrite8(p_Dev, byUartIer,  p_Dev->m_Uart.ier);
@@ -735,7 +737,8 @@ if ( cnt++ < 160 ) printk(KERN_ALERT "-uart-%d; iir=0x%X\n", PD->m_PhoneId, byIi
                     if ( cb_PutElement(&PD->m_RxBuffer, rx_word ) == 0 )
                         PD->rx_cnt_loss++;      // TODO: process conditions - return ???
                     else
-                        tasklet_hi_schedule(&PD->m_RxTasklet);
+                        // tasklet_hi_schedule(&PD->m_RxTasklet);
+                        queue_work(simdrv_wq, &PD->m_RxWorkItem.real_work);
 
                     PD->rx_cnt++;        // collect statistics
                 }
@@ -748,6 +751,7 @@ if ( cnt++ < 160 ) printk(KERN_ALERT "-uart-%d; iir=0x%X\n", PD->m_PhoneId, byIi
 #ifdef SIM_DEBUG_INTERRUPT_TRACE
             printk("IIR - Transmit holding register empty : %d %X\n", PD->m_PhoneId, (byIir & 0x0F));
 #endif
+
         if ( g_FpgaVersion >= 7 )    // new UART with hardware Tx FIFO
         {
             if ( PD->m_TxBuffer.m_nTxPtr < sizeof(PD->m_TxBuffer.m_Buffer))
@@ -764,94 +768,8 @@ if ( cnt++ < 160 ) printk(KERN_ALERT "-uart-%d; iir=0x%X\n", PD->m_PhoneId, byIi
                 }
             }
         }
-        else        // old UART
-        {
-         // The interrupt was cleared by reading the IIR.  Signal the output
-         // driver.
-         if ( PD->m_TxBuffer.m_nTxPtr < sizeof(PD->m_TxBuffer.m_Buffer))
-         {
-            if ( PD->m_TxBuffer.m_nTxPtr+1 >= sizeof(PD->m_TxBuffer.m_Buffer))
-                simdrv_isr_tx_disable(PD);       // disable Tx interrupt
 
-#ifdef SIM_DEBUG_INTERRUPT_TRACE
-printk("%d#%X ", PD->m_PhoneId, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr]);
-#endif
-
-#ifdef SEND_DEBUG_MESSAGES
-            // if debug messages
-            if ( (PD->m_TxBuffer.m_DataType == TX_ATR) && PD->m_DebugOn)
-            {
-                struct timeval      timeStamp;
-                long                delta;
-
-                do_gettimeofday (&timeStamp);           //byte sent time
-                delta = deltaTime(&PD->m_LastTime, &timeStamp);
-
-                // time when first ATR byte was sent
-                if ( PD->m_AtrDelta == 0 )
-                {
-                    PD->m_AtrFirstDelta = delta;
-                    PD->m_AtrDelta = 1;
-                }
-                else
-                if ( PD->m_AtrDelta < delta )
-                    PD->m_AtrDelta = delta;
-
-                PD->m_LastTime = timeStamp;
-            }
-#endif
-            // send next byte and move pointer
-            dev_iowrite8(PD, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr], PD->m_Uart.rbr);
-            PD->tx_cnt++;               // statistic
-
-            PD->m_TxBuffer.m_nTxPtr++;
-
-            // reach the end of the buffer
-            if ( PD->m_TxBuffer.m_nTxPtr >= sizeof(PD->m_TxBuffer.m_Buffer))
-            {   // all bytes of the buffer was sent - can send next portion
-#ifdef SEND_DEBUG_MESSAGES
-                // send debug message
-                if ( (PD->m_TxBuffer.m_DataType == TX_ATR) && PD->m_DebugOn)
-                {    //send debug info
-                    snprintf(PD->m_DebugMsg + strlen(PD->m_DebugMsg),           // write to debug buffer
-                             sizeof(PD->m_DebugMsg) - strlen(PD->m_DebugMsg),   // not more than free bytes exists
-                            "Reset %3.3ld.%6.6ld sec; ATR after=%ld usec\n",
-                            PD->m_ResetTime.tv_sec%1000, PD->m_ResetTime.tv_usec,
-                            PD->m_AtrFirstDelta);
-
-
-                    snprintf(PD->m_DebugMsg + strlen(PD->m_DebugMsg),           // write to debug buffer
-                             sizeof(PD->m_DebugMsg) - strlen(PD->m_DebugMsg),   // not more than free bytes exists
-                            "ATR sent %3.3ld.%6.6ld sec; ATR max delta=%ld usec\n",
-                            PD->m_ResetTime.tv_sec%1000, PD->m_ResetTime.tv_usec, PD->m_AtrDelta);
-                }
-#endif
-                if (  PD->m_TxBuffer.m_BaudRateDivisor != 0
-                   && PD->m_TxBuffer.m_DataType == TX_COMMAND )
-                {
-                    // set new baudrate
-                    // TODO - i know it takes some time (1.4 msec to send byte )
-                    //        so everyone in system will wait on this loop
-                    while ((dev_ioread8(PD, PD->m_Uart.lsr) & (LSR_TRANSMIT_EMPTY)) == 0);
-
-                    simdrv_SetUartDivisor(PD, PD->m_TxBuffer.m_BaudRateDivisor);
-
-                }
-                PD->m_TxBuffer.m_DataType = TX_COMMAND;
-                // allow ioctl to process next "send response"
-                // semaphore up is allowed in IRQ - as not sleeping function
-                up (&PD->m_TxBuffer.m_TxSemaphore);
-            }
-         }
-         else
-         {
-            printk("ERROR: - TX TRYING TO SEND NO BYTES(%d) %d\n", PD->m_PhoneId, PD->m_TxBuffer.m_nTxPtr);
-            //fix the damage - reset Tx interrupt by sending dummy byte
-            simdrv_isr_tx_disable(PD);       // disable Tx interrupt
-            dev_iowrite8(PD, 0, PD->m_Uart.rbr);
-         }
-         }
-         break;
+        break;
 
 
       case 0x01:  // No interrupt is pending within the IIR.
@@ -875,7 +793,8 @@ printk("%d#%X ", PD->m_PhoneId, PD->m_TxBuffer.m_Buffer[PD->m_TxBuffer.m_nTxPtr]
 inline static void PutEventToBuffer (phoneSIMStruct *p_Dev, uint16_t p_usEvent)
 {
     if ( cb_PutElement(&p_Dev->m_RxBuffer, (p_usEvent >> 8)) != 0 )
-        tasklet_hi_schedule(&p_Dev->m_RxTasklet);   // bottom half
+        // tasklet_hi_schedule(&p_Dev->m_RxTasklet);   // bottom half
+        queue_work(simdrv_wq, &p_Dev->m_RxWorkItem.real_work);
     else
         p_Dev->rx_cnt_loss++;
 }
@@ -1042,6 +961,54 @@ static irqreturn_t simdrv_isr(int32_t irq, void *dev_id)
 
 }
 #endif
+
+//
+// AMP IRQ processing work queue function.
+// Requires specialized handling due to sleep possibility.
+//
+
+#define SIMDRV_ISR_INTERVAL_MSECS (500)   // 500 ms
+
+static 
+simdrv_amp_isr_worker(
+phoneSIMStruct *theDevice)
+{
+  // Locals
+  void * amp_ssw_irq_reg = 0x22;
+  unsigned int amp_ssw_irq;
+  static unsigned int last_amp_ssw_irq = 0xDEADBEEF;
+  
+  // Disable all interrupts  
+  amp_iowrite8(theDevice->m_PhoneId, 0x01, amp_ssw_irq_reg);
+  
+  // Read IRQ source
+  amp_ssw_irq = amp_ioread8(theDevice->m_PhoneId, amp_ssw_irq_reg);
+  
+  // If change...
+  if (amp_ssw_irq != last_amp_ssw_irq)
+  {    
+    // Log insertion change
+    printk(KERN_ALERT
+           "simdrv: phonesim%d: simdrv_amp_isr_worker (0x%x)\n",
+           theDevice->m_PhoneId,
+           amp_ssw_irq);
+               
+    // Service ISRs
+    if(amp_ssw_irq & FPGA_SSW_IRQ_PH0)  simdrv_phone_isr(theDevice);
+    if(amp_ssw_irq & FPGA_SSW_IRQ_UART0) simdrv_uart_isr(theDevice);
+  }
+
+  // Enable all interrupts
+  amp_iowrite8(theDevice->m_PhoneId, 0x00, amp_ssw_irq_reg);
+  
+  // Acknowledge interrupt
+  amp_iowrite8(theDevice->m_PhoneId, 0x20, 0x00);
+  amp_iowrite8(theDevice->m_PhoneId, 0x00, 0x00);
+
+  // Update
+  last_amp_ssw_irq = amp_ssw_irq;  
+}
+
 
 /*
  *  starts/restarts send T=0 NULL byte timer
@@ -1253,12 +1220,25 @@ static int simdrv_UartConfig(phoneSIMStruct *p_Dev, struct SimConfigUart *p_Uart
 // =============================================================================
 //  IRQ tasklet
 // =============================================================================
-void simdrv_tasklet (unsigned long p_Param)
+void 
+simdrv_tasklet(
+    struct work_struct *work_arg)
 {
-    //int       rv;
-    phoneSIMStruct *dev = (phoneSIMStruct*)p_Param;
+    phoneSIMStruct *dev;
     BufferElement   usValue;
     BufferElement   usValue_t;
+    struct work_cont *c_ptr;
+  
+    // Get container to work item
+    c_ptr = container_of(work_arg, struct work_cont, real_work);
+
+    // Get phone device
+    dev = (phoneSIMStruct *) (c_ptr->arg);
+
+    // Log
+    printk(KERN_ALERT
+           "simdrv: phonesim%d: simdrv_tasklet running\n",
+           dev->m_PhoneId);    
 
     // get the all characters from RX circular buffer one by one
     while ( cb_GetElement(&dev->m_RxBuffer, &usValue) != 0 )
@@ -1292,7 +1272,7 @@ void simdrv_tasklet (unsigned long p_Param)
                     // we know that User Context and Tasklets
                     // are serialized (by disable_tasklet)
                     // disable Tx interrupts
-                    simdrv_isr_tx_disable(dev);
+                    // simdrv_isr_tx_disable(dev);
 
                     // if semaphore was not down - get it
                     // if it was - leave as it was - in both cases
@@ -1346,6 +1326,11 @@ void simdrv_tasklet (unsigned long p_Param)
     }
     // wake up ioctl
     wake_up_interruptible(&dev->ioctl_wake_queue);
+
+    // Log
+    printk(KERN_ALERT
+           "simdrv: phonesim%d: simdrv_tasklet exiting\n",
+           dev->m_PhoneId);    
 }
 //==========================================================================
 //
@@ -1402,7 +1387,7 @@ static inline uint8_t simdrv_translateEvent(phoneSIMStruct * p_Dev, BufferElemen
 }
 
 //
-//
+// simdrv_UartEnable
 //
 static int 
 simdrv_UartEnable(
@@ -1418,6 +1403,15 @@ simdrv_UartEnable(
       pDev->m_TxBuffer.m_nTxPtr = sizeof(pDev->m_TxBuffer.m_Buffer);
       pDev->m_TxBuffer.m_DataType = TX_COMMAND;
   }
+
+  // Log insertion change
+  printk(KERN_ALERT
+       "simdrv: phonesim%d: UART enable\n",
+       pDev->m_PhoneId); 
+       
+  // Set UART enabled
+  pDev->m_UartEnabled = 1;       
+         
   pDev->m_T0Mode   = T0_WAIT_COMMAND;
   pDev->m_SendNull = SIMCONFIG_SEND_NULL;
 
@@ -1497,7 +1491,15 @@ simdrv_UartDisable(
   struct file * file)
 {
   FileStruct      *pFile = (FileStruct *)file->private_data;
-    
+
+  // Log insertion change
+  printk(KERN_ALERT
+       "simdrv: phonesim%d: UART disable\n",
+       pDev->m_PhoneId); 
+       
+  // Set UART enabled
+  pDev->m_UartEnabled = 0; 
+
   // stop scheduled timer
   del_timer_sync(&pDev->m_SendNullTimer);
 
@@ -2066,33 +2068,39 @@ static inline int simdrv_FillTxFifo(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, i
 
     // copy to Tx FIFO while it has space
 
-    tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
-    while ( (tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs)) > 0 )
-    {
-        while ( tfs-- > 0 )
-        {
-            nfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
-            // put next byte in Tx FIFO
-            dev_iowrite8(p_Dev, *p_strBuf++, p_Dev->m_Uart.rbr);
-            p_Dev->tx_cnt++;               // statistic
-            // if we do not have more bytes to send
-            if ( --p_nBufLen <= 0 )
-            {
-#ifdef SIM_DEBUG_INTERRUPT_TRACE
-    while ( ptr != p_strBuf )
-        printk("%dx%X ", p_Dev->m_PhoneId, *ptr++);
-#endif
-    nfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
-                return 0;
-            }
-        }
-    }
-#ifdef SIM_DEBUG_INTERRUPT_TRACE
-    while ( ptr != p_strBuf )
-        printk("contd .. %dT%X ", p_Dev->m_PhoneId, *ptr++);
-#endif
+    // Log
+    printk(KERN_ALERT 
+           "simdrv: phonesim%d: fill TX FIFO (%d bytes)\n", 
+           p_Dev->m_PhoneId, p_nBufLen);
 
-    return p_nBufLen;
+    // Get bytes available in FIFO
+    tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
+
+    // While space available...
+    while (tfs)
+    {
+        // Log
+        printk(KERN_ALERT 
+        "simdrv: phonesim%d: fill TX FIFO (0x%x)\n", 
+        p_Dev->m_PhoneId, *p_strBuf);
+
+        // Write the byte
+        dev_iowrite8(p_Dev, *p_strBuf++, p_Dev->m_Uart.rbr);
+        p_Dev->tx_cnt++;
+
+        // If done...
+        if (--p_nBufLen <= 0)
+        {
+            // Done
+            return(0);
+        }
+
+        // Update count
+        tfs = dev_ioread8(p_Dev, p_Dev->m_Uart.tfs);
+    }
+
+    // Some left over
+    return(p_nBufLen);
 }
 //
 //  send response implementation for UART with Tx FIFO
@@ -2100,6 +2108,11 @@ static inline int simdrv_FillTxFifo(phoneSIMStruct * p_Dev, uint8_t *p_strBuf, i
 static int simdrv_Uart2SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
                                     int p_nBufLen, uint16_t p_BaudRateDivisor)
 {
+    // Log
+    printk(KERN_ALERT 
+           "simdrv: phonesim%d: send response (%d bytes)\n", 
+           p_Dev->m_PhoneId, p_nBufLen);
+
     //protection against sending when file is already closed
     if ( p_Dev->m_TxStatus == SIM_IO_STOP )
         return 0;
@@ -2110,19 +2123,23 @@ static int simdrv_Uart2SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
 
     // enable Tx interrupt - initiate transmit
     // TODO for UART2 Tx should be always enabled
-    simdrv_isr_tx_enable(p_Dev);
+    // simdrv_isr_tx_enable(p_Dev);
 
-#ifdef SIM_DEBUG_TRACE
-    simdrv_DebugPrint("send2 in", p_Dev->m_PhoneId, p_strBuf, (int)p_nBufLen);
-#endif
     // do not execute tasklet(bottom half) for a while to prevent racing
-    tasklet_disable(&p_Dev->m_RxTasklet);
+    flush_work(&p_Dev->m_RxWorkItem.real_work);
+    // tasklet_disable(&p_Dev->m_RxTasklet);
+
+    // Log
+    printk(KERN_ALERT 
+           "simdrv: phonesim%d: send response (RX work flushed)\n", 
+           p_Dev->m_PhoneId);
 
     // check if ATR in process. If so flush the requesed data
     if ( p_Dev->m_TxBuffer.m_DataType == TX_COMMAND )
     {
         //
         int leftCnt = simdrv_FillTxFifo(p_Dev, p_strBuf, p_nBufLen);
+
         if ( leftCnt == 0 )
         {   // FIFO is big enough for all Tx bytes
             if ( p_BaudRateDivisor != 0 )  // set baudrate after all bytes is sent
@@ -2134,7 +2151,7 @@ static int simdrv_Uart2SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
             // allow ioctl to process next "send response"
             // semaphore up is allowed in IRQ - as not sleeping function
             up (&p_Dev->m_TxBuffer.m_TxSemaphore);
-            tasklet_enable(&p_Dev->m_RxTasklet);
+            queue_work(simdrv_wq, &p_Dev->m_RxWorkItem.real_work);
             return 0;       // transmit finished
         }
         //printk("send2 out - Tx FIFO/Buffered %d/%d.\n", (p_nBufLen - leftCnt), leftCnt);
@@ -2147,10 +2164,15 @@ static int simdrv_Uart2SendResponse(phoneSIMStruct * p_Dev, uint8_t *p_strBuf,
                &p_strBuf[p_nBufLen - leftCnt], leftCnt);
     }
 
+    // Log
+    printk(KERN_ALERT 
+           "simdrv: phonesim%d: send response (RX work started)\n", 
+           p_Dev->m_PhoneId);
+
     // IRQ will set semaphore UP after last byte from Tx buffer will be sent to Tx FIFO
 
     // allow taskled(IRQ bottom half) to be executed
-    tasklet_enable(&p_Dev->m_RxTasklet);
+    queue_work(simdrv_wq, &p_Dev->m_RxWorkItem.real_work);
 
     return 0;
 }
@@ -2170,7 +2192,7 @@ static void simdrv_Uart2SendAtr(phoneSIMStruct * p_Dev)
     if ( p_Dev->m_TxStatus == SIM_IO_STOP )
         return;
 
-    simdrv_isr_tx_enable(p_Dev);      //always enabled for UART2 - for noe
+    // simdrv_isr_tx_enable(p_Dev);      //always enabled for UART2 - for noe
 
     p_Dev->m_TxBuffer.m_DataType = TX_ATR;
     p_Dev->m_TxBuffer.m_BaudRateDivisor = 0;
@@ -2543,6 +2565,24 @@ struct work_struct *work_arg
         continue;
       }
 
+      // If AMP device and UART running...
+      if (sim >= NUM_PHONES &&
+          dev->m_UartEnabled)
+      {
+        // If reset needed...
+        if (dev->m_NeedsReset)
+        {
+          // Perform soft reset
+          // dev_WarmResetSim(dev);
+
+          // Reset not needed
+          dev->m_NeedsReset = 0;
+        }
+
+        // Run it
+        simdrv_amp_isr_worker(dev);
+      }        
+
       // AMP-based phones have no visibility to insertion status
       // so let's avoid some continuous noise of useless reading
 
@@ -2597,7 +2637,7 @@ simdrv_TimerFunction(unsigned long p_nJifs)
     
   // Queue work to dedicated queue
   simdrv_timer_work.arg = (int) p_nJifs;
-  queue_work(timer_wq, &simdrv_timer_work.real_work);
+  queue_work(simdrv_wq, &simdrv_timer_work.real_work);
 }
 
 //
@@ -3214,22 +3254,6 @@ static void simdrv_cleanup_module(void)
 #ifndef SIM_DEV_BOARD
         free_irq(fpga_irq, &simdrv_dev);
 #endif
-    case RxTasklet:
-    {
-      // Logs
-      printk(KERN_ALERT "simdrv: cleanup(RxTasklet)\n");
-
-      //  kill tasklets
-      for (ph = 0; ph < NUM_DEVICES; ++ph)
-      {
-        // If tasklet running...
-        if (phoneSIMData[ph].m_RxTasklet.func)
-        {
-          // Kill it
-          tasklet_kill(&phoneSIMData[ph].m_RxTasklet);
-        }
-      }
-    }
     case FPGA:          // fall through from previous case
     {
       // Logs
@@ -3268,12 +3292,12 @@ static void simdrv_cleanup_module(void)
         break;
     }
     
-    // If timer work queue...
-    if (timer_wq)
+    // If  work queue...
+    if (simdrv_wq)
     {        
       // Cleanup
-      flush_workqueue(timer_wq);
-      destroy_workqueue(timer_wq);
+      flush_workqueue(simdrv_wq);
+      destroy_workqueue(simdrv_wq);
     } 
 
     // Cleanup any USB control devices
@@ -3359,9 +3383,11 @@ simdrv_init_phone(int ph)
   PD->m_PhoneForCopyEvents = NULL;
   PD->m_EventSrc = -1;
   PD->m_RxThreadStatus = SIM_THREAD_STOP;
-  //init_completion(&PD->m_RxThreadCompletion);
 
-  tasklet_init(&PD->m_RxTasklet, simdrv_tasklet, (unsigned long)PD);
+//   tasklet_init(&PD->m_RxTasklet, simdrv_tasklet, (unsigned long)PD);
+  // Initialize RX work item
+  INIT_WORK(&PD->m_RxWorkItem.real_work, simdrv_tasklet);
+  PD->m_RxWorkItem.arg = (int) PD;
 
   atomic_set(&PD->m_PhoneTxTrigger, 0);
   atomic_set(&PD->m_EventCnt, 0);
@@ -3446,16 +3472,15 @@ static inline int simdrv_init(void)
       // Initialize phone ID to max devices
       PD->m_PhoneId = NUM_DEVICES;
 
-      // Initialize empty tasklet.
-      // On initialization it will be redone.
-      tasklet_init(&PD->m_RxTasklet, NULL, 0L);
-
       // Initialize timer
       init_timer(&PD->m_SendNullTimer);
       
       // Perform mappings
       dev_GetFpgaRegisters(PD, ph);
       dev_GetUartRegisters(PD, ph);
+      
+      // Disable UART
+      PD->m_UartEnabled = 0;
     }
 
     // Initialize all probe instances
@@ -3539,8 +3564,6 @@ static int __init simdrv_init_module(void)
 
     EXPORT_NO_SYMBOLS; /* otherwise, leave global symbols visible */
 
-    DriverState = RxTasklet; // even if function failed - it is possible that
-                             // some tasklets were started - so we need to kill them
     if ( result != 0 )
         goto fail;
 
@@ -3568,11 +3591,11 @@ static int __init simdrv_init_module(void)
 #endif
     DriverState = Statistic;
 
-    // Construct work queues
-    if (!timer_wq)
-      timer_wq = create_singlethread_workqueue("timer_wq");
+    // Construct dedicated single-threaded queue
+    if (!simdrv_wq)
+      simdrv_wq = create_singlethread_workqueue("simdrv_wq");
 
-    // Initialize work queues
+    // Initialize timer function work item
   	INIT_WORK(&simdrv_timer_work.real_work, simdrv_TimerFunctionWorker);
   	
   	// Initialize USB access mutext

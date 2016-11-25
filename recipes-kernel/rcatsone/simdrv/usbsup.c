@@ -336,7 +336,7 @@ tty_request(
   ret = vfs_write(file, (char *)data + pos, len - pos, &file->f_pos);
 
   // Log
-#ifdef SIM_DEBUG_TRACE  
+#ifdef SIM_DEBUG_FPGA_TRACE  
   printk(KERN_ALERT
          "simdrv: phonesim%d: vfs_write pos %d len %d ret %d\n",
            thePhoneId, pos, len - pos, ret);
